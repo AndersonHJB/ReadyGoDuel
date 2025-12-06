@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, User, Activity, RefreshCw, BarChart3, Loader2 } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
 type Player = 'p1' | 'p2' | null;
-type WinReason = 'REACTION' | 'FALSE_START' | null;
+type WinReason = 'REACTION' | 'FALSE_START' | 'VOICE_TRIGGER' | null;
+type GameMode = 'TOUCH' | 'VOICE';
 
 interface GameLog {
     step: 'WAITING' | 'GO' | 'END';
@@ -12,25 +13,24 @@ interface GameLog {
     winner?: Player;
     winReason?: WinReason;
     reactionTime?: number;
+    audioBlob?: Blob;
+    detectedPitch?: number;
 }
 
-// --- 简易音效管理器 (Web Audio API) ---
-const playSound = (type: 'start' | 'go' | 'false' | 'win') => {
+// --- 音效管理器 ---
+const playSound = (type: 'start' | 'go' | 'false' | 'win', mode: GameMode) => {
+    if (mode === 'VOICE' && type === 'go') return; 
     try {
-        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-        if (!AudioContext) return;
-        
-        const ctx = new AudioContext();
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContextClass) return;
+        const ctx = new AudioContextClass();
         const oscillator = ctx.createOscillator();
         const gainNode = ctx.createGain();
-
         oscillator.connect(gainNode);
         gainNode.connect(ctx.destination);
-
         const now = ctx.currentTime;
 
         if (type === 'start') {
-            // 准备开始：短促的提示音
             oscillator.type = 'sine';
             oscillator.frequency.setValueAtTime(440, now);
             oscillator.frequency.exponentialRampToValueAtTime(880, now + 0.1);
@@ -39,26 +39,21 @@ const playSound = (type: 'start' | 'go' | 'false' | 'win') => {
             oscillator.start(now);
             oscillator.stop(now + 0.1);
         } else if (type === 'go') {
-            // GO信号：清脆高音
             oscillator.type = 'square';
             oscillator.frequency.setValueAtTime(880, now);
-            oscillator.frequency.exponentialRampToValueAtTime(1760, now + 0.1);
             gainNode.gain.setValueAtTime(0.5, now);
             gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
             oscillator.start(now);
             oscillator.stop(now + 0.3);
         } else if (type === 'false') {
-            // 抢跑：低沉错误音
             oscillator.type = 'sawtooth';
             oscillator.frequency.setValueAtTime(150, now);
-            oscillator.frequency.linearRampToValueAtTime(100, now + 0.3);
             gainNode.gain.setValueAtTime(0.5, now);
             gainNode.gain.linearRampToValueAtTime(0.01, now + 0.3);
             oscillator.start(now);
             oscillator.stop(now + 0.3);
         } else if (type === 'win') {
-            // 胜利：简单的上行琶音
-            const notes = [523.25, 659.25, 783.99]; // C Major
+            const notes = [523.25, 659.25, 783.99]; 
             notes.forEach((freq, i) => {
                 const osc = ctx.createOscillator();
                 const gn = ctx.createGain();
@@ -77,93 +72,331 @@ const playSound = (type: 'start' | 'go' | 'false' | 'win') => {
     }
 };
 
+// --- 音高检测 (简化版自相关) ---
+const detectPitch = (buffer: Float32Array, sampleRate: number): number => {
+    const SIZE = buffer.length;
+    let rms = 0;
+    for (let i = 0; i < SIZE; i++) rms += buffer[i] * buffer[i];
+    rms = Math.sqrt(rms / SIZE);
+    if (rms < 0.01) return -1; // 噪音门限
+
+    let bestOffset = -1;
+    let bestCorrelation = 0;
+    let lastCorrelation = 1;
+
+    // 降低采样率以提高性能
+    for (let offset = 0; offset < SIZE; offset++) {
+        let correlation = 0;
+        for (let i = 0; i < SIZE - offset; i += 2) {
+            correlation += Math.abs(buffer[i] - buffer[i + offset]);
+        }
+        correlation = 1 - (correlation / (SIZE / 2));
+        
+        if (correlation > 0.9 && correlation > lastCorrelation) {
+            if (correlation > bestCorrelation) {
+                bestCorrelation = correlation;
+                bestOffset = offset;
+            }
+        }
+        lastCorrelation = correlation;
+    }
+    if (bestCorrelation > 0.01 && bestOffset > 0) {
+        return sampleRate / bestOffset;
+    }
+    return -1;
+};
+
 export default function App() {
-    // --- 状态管理 ---
+    // --- 状态 ---
     const [gameState, setGameState] = useState<GameState>('IDLE');
+    const [gameMode, setGameMode] = useState<GameMode>('TOUCH'); 
     const [winner, setWinner] = useState<Player>(null);
     const [winReason, setWinReason] = useState<WinReason>(null);
     const [reactionTime, setReactionTime] = useState<number>(0);
     const [soundEnabled, setSoundEnabled] = useState(true);
+    const [detectedFreq, setDetectedFreq] = useState<number>(0); 
+    const [currentVolume, setCurrentVolume] = useState<number>(0); 
     
-    // 回放相关
+    // Debug & 预检状态
+    const [debugInfo, setDebugInfo] = useState({ state: 'init', mic: 'waiting', vol: 0 });
+    const [isMicInitialized, setIsMicInitialized] = useState(false);
+    const [isSavingAudio, setIsSavingAudio] = useState(false); // 新增：正在保存录音状态
+
+    // 回放
     const [gameHistory, setGameHistory] = useState<GameLog[]>([]);
     const [isReplaying, setIsReplaying] = useState(false);
     
-    // Refs
+    // Refs - 核心对象
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const startTimeRef = useRef<number>(0);
     const signalTimeRef = useRef<number>(0);
     const stateRef = useRef<GameState>('IDLE');
     const historyRecorder = useRef<GameLog[]>([]);
+    
+    // Refs - 音频对象 (持久化)
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
+    const audioContextRef = useRef<AudioContext | null>(null);
+    const analyserRef = useRef<AnalyserNode | null>(null);
+    const micStreamRef = useRef<MediaStream | null>(null);
+    const animationFrameRef = useRef<number | null>(null);
+    
+    // 延迟录音的 Timer
+    const recordingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    
+    // 回放专用 Source Ref (用于停止)
+    const replaySourceRef = useRef<AudioBufferSourceNode | null>(null);
 
+    useEffect(() => { stateRef.current = gameState; }, [gameState]);
+
+    // 清理
     useEffect(() => {
-        stateRef.current = gameState;
-    }, [gameState]);
+        return () => { stopAudioResources(); };
+    }, []);
 
-    // --- 核心逻辑 ---
+    const stopAudioResources = () => {
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.stop();
+        }
+        if (replaySourceRef.current) {
+            try { replaySourceRef.current.stop(); } catch(e) {}
+        }
+        if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current);
+    };
 
-    const startGame = () => {
-        if (isReplaying) return;
+    // --- 音频引擎核心 ---
+    const initAudioEngine = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            micStreamRef.current = stream;
+
+            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+            const ctx = new AudioContextClass();
+            audioContextRef.current = ctx;
+            await ctx.resume();
+
+            const source = ctx.createMediaStreamSource(stream);
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 2048;
+            analyserRef.current = analyser;
+
+            const muteGain = ctx.createGain();
+            muteGain.gain.value = 0.001; 
+            source.connect(analyser);
+            analyser.connect(muteGain);
+            muteGain.connect(ctx.destination);
+
+            setIsMicInitialized(true);
+            setDebugInfo(prev => ({ ...prev, state: ctx.state, mic: 'Active' }));
+
+            startMonitoringLoop();
+            
+            return true;
+        } catch (err) {
+            console.error("Audio Init Failed", err);
+            setDebugInfo(prev => ({ ...prev, mic: 'Error', state: 'failed' }));
+            alert("麦克风启动失败。请确保允许权限，且没有其他应用占用麦克风。");
+            return false;
+        }
+    };
+
+    const startMonitoringLoop = () => {
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+        
+        const loop = () => {
+            if (!analyserRef.current || !audioContextRef.current) return;
+            
+            if (audioContextRef.current.state === 'suspended') {
+                audioContextRef.current.resume();
+            }
+
+            const bufferLength = analyserRef.current.fftSize;
+            const dataArray = new Float32Array(bufferLength);
+            analyserRef.current.getFloatTimeDomainData(dataArray);
+
+            let sum = 0;
+            let hasSignal = false;
+            for (let i = 0; i < bufferLength; i++) {
+                const val = dataArray[i];
+                sum += val * val;
+                if (Math.abs(val) > 0.0001) hasSignal = true; 
+            }
+            
+            if (!hasSignal) {
+                const byteArray = new Uint8Array(bufferLength);
+                analyserRef.current.getByteTimeDomainData(byteArray);
+                sum = 0;
+                for(let i=0; i<bufferLength; i++) {
+                    const val = (byteArray[i] - 128) / 128.0;
+                    sum += val * val;
+                }
+            }
+
+            const rms = Math.sqrt(sum / bufferLength);
+            
+            const amplifiedVol = Math.min(rms * 15, 1.5); 
+            setCurrentVolume(amplifiedVol);
+            setDebugInfo(prev => ({ 
+                ...prev, 
+                vol: parseFloat(rms.toFixed(4)),
+                state: audioContextRef.current?.state || 'unknown'
+            }));
+
+            // 游戏逻辑触发
+            if (stateRef.current === 'WAITING' || stateRef.current === 'GO') {
+                if (rms > 0.02) { 
+                    handleVoiceTrigger(dataArray, audioContextRef.current.sampleRate);
+                }
+            }
+
+            animationFrameRef.current = requestAnimationFrame(loop);
+        };
+        loop();
+    };
+
+    // --- 游戏流程 ---
+
+    const handleVoiceTrigger = (buffer: Float32Array, sampleRate: number) => {
+        if (stateRef.current === 'IDLE' || stateRef.current === 'ENDED') return;
+
+        const pitch = detectPitch(buffer, sampleRate);
+        setDetectedFreq(Math.round(pitch));
+
+        let guessedWinner: Player = null;
+        if (pitch > 0) {
+            if (pitch > 200) guessedWinner = 'p1';
+            else guessedWinner = 'p2';
+        }
+        
+        handleAction(guessedWinner || 'p1', 'VOICE_TRIGGER');
+    };
+
+    const startGame = async () => {
+        if (isReplaying || isSavingAudio) return; // 防止在保存时开始
+
+        // 清理上一次可能的录音定时器
+        if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current);
+
+        if (gameMode === 'VOICE' && !isMicInitialized) {
+            const success = await initAudioEngine();
+            if (!success) return; 
+        }
+
         setGameState('WAITING');
         setWinner(null);
         setWinReason(null);
         setReactionTime(0);
+        setDetectedFreq(0);
+        setIsSavingAudio(false);
         historyRecorder.current = [];
         
-        if (soundEnabled) playSound('start');
+        if (soundEnabled) playSound('start', gameMode);
 
         const now = Date.now();
         startTimeRef.current = now;
         historyRecorder.current.push({ step: 'WAITING', timestamp: 0 });
 
-        const randomDelay = Math.floor(Math.random() * 4000) + 2000; // 2-6秒
+        if (gameMode === 'VOICE' && micStreamRef.current) {
+            startRecording();
+        }
 
+        const randomDelay = Math.floor(Math.random() * 4000) + 2000; 
         if (timerRef.current) clearTimeout(timerRef.current);
         timerRef.current = setTimeout(triggerSignal, randomDelay);
+    };
+
+    const startRecording = () => {
+        if (!micStreamRef.current) return;
+        audioChunksRef.current = [];
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+        try {
+            const recorder = new MediaRecorder(micStreamRef.current, { mimeType });
+            recorder.ondataavailable = (e) => {
+                if (e.data.size > 0) audioChunksRef.current.push(e.data);
+            };
+            recorder.start();
+            mediaRecorderRef.current = recorder;
+        } catch (e) { console.error("Rec error", e); }
     };
 
     const triggerSignal = () => {
         const now = Date.now();
         signalTimeRef.current = now;
         setGameState('GO');
-        if (soundEnabled) playSound('go');
+        if (soundEnabled) playSound('go', gameMode);
         historyRecorder.current.push({ step: 'GO', timestamp: now - startTimeRef.current });
     };
 
-    const handleAction = (player: 'p1' | 'p2') => {
+    const handleAction = (player: 'p1' | 'p2', triggerType: 'TOUCH' | 'VOICE_TRIGGER' = 'TOUCH') => {
         if (stateRef.current === 'IDLE' || stateRef.current === 'ENDED' || isReplaying) return;
 
         const now = Date.now();
-        const currentHistory = historyRecorder.current;
-
+        
+        // 1. 立即计算结果
+        let finalWinner = player;
+        let finalReason: WinReason = 'REACTION';
         if (stateRef.current === 'WAITING') {
-            // 抢跑
-            if (timerRef.current) clearTimeout(timerRef.current);
-            const opponent = player === 'p1' ? 'p2' : 'p1';
-            endGame(opponent, 'FALSE_START', 0);
-            if (soundEnabled) playSound('false');
-            
-            currentHistory.push({
-                step: 'END',
-                timestamp: now - startTimeRef.current,
-                winner: opponent,
-                winReason: 'FALSE_START'
-            });
+            finalWinner = player === 'p1' ? 'p2' : 'p1';
+            finalReason = 'FALSE_START';
         } else if (stateRef.current === 'GO') {
-            // 获胜
-            const timeDiff = now - signalTimeRef.current;
-            endGame(player, 'REACTION', timeDiff);
-            if (soundEnabled) playSound('win');
-            
-            currentHistory.push({
-                step: 'END',
-                timestamp: now - startTimeRef.current,
-                winner: player,
-                winReason: 'REACTION',
-                reactionTime: timeDiff
-            });
+            finalReason = 'REACTION';
+            if (gameMode === 'VOICE' && triggerType === 'VOICE_TRIGGER') {
+                // 保持原判
+            }
         }
-        setGameHistory([...currentHistory]);
+        const timeDiff = stateRef.current === 'GO' ? now - signalTimeRef.current : 0;
+
+        // 2. 立即更新UI状态 (此时录音还在继续)
+        endGame(finalWinner, finalReason, timeDiff);
+        if (soundEnabled) playSound(finalReason === 'FALSE_START' ? 'false' : 'win', gameMode);
+
+        // 3. 构建临时日志
+        const logEntry: GameLog = {
+            step: 'END',
+            timestamp: now - startTimeRef.current,
+            winner: finalWinner,
+            winReason: finalReason,
+            reactionTime: timeDiff,
+            // audioBlob 此时为空
+        };
+        historyRecorder.current.push(logEntry);
+        setGameHistory([...historyRecorder.current]);
+
+        // 4. 处理录音结束逻辑
+        if (gameMode === 'VOICE') {
+            setIsSavingAudio(true); // 锁定开始按钮
+            
+            // --- 核心修改：延迟 800ms 停止录音 ---
+            recordingTimeoutRef.current = setTimeout(() => {
+                stopRecordingAndSave(logEntry);
+            }, 800); 
+        } else {
+             // 触摸模式直接结束
+             stopRecordingAndSave(logEntry); 
+        }
+    };
+
+    const stopRecordingAndSave = (logEntry: GameLog) => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.requestData(); // 强制刷新缓冲区
+            mediaRecorderRef.current.stop();
+            
+            // 给 ondataavailable 一点时间处理最后的数据
+            setTimeout(() => {
+                const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+                if (audioChunksRef.current.length > 0) {
+                    const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+                    logEntry.audioBlob = audioBlob;
+                    
+                    // 强制更新 React 状态，让回放按钮生效
+                    setGameHistory([...historyRecorder.current]);
+                }
+                setIsSavingAudio(false); // 解锁
+            }, 100);
+        } else {
+            setIsSavingAudio(false);
+        }
     };
 
     const endGame = (winnerPlayer: Player, reason: WinReason, time: number) => {
@@ -171,6 +404,36 @@ export default function App() {
         setWinner(winnerPlayer);
         setWinReason(reason);
         setReactionTime(time);
+    };
+
+    // --- 回放功能增强版 (带8倍音量放大) ---
+    const playBlobWithGain = async (blob: Blob) => {
+        try {
+            let ctx = audioContextRef.current;
+            if (!ctx || ctx.state === 'closed') {
+                 const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+                 ctx = new AudioContextClass();
+                 audioContextRef.current = ctx;
+            }
+            if (ctx.state === 'suspended') await ctx.resume();
+
+            const arrayBuffer = await blob.arrayBuffer();
+            const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+
+            const source = ctx.createBufferSource();
+            source.buffer = audioBuffer;
+
+            const gainNode = ctx.createGain();
+            gainNode.gain.value = 8.0; // 放大 8 倍！
+
+            source.connect(gainNode);
+            gainNode.connect(ctx.destination);
+
+            replaySourceRef.current = source;
+            source.start(0);
+        } catch (e) {
+            console.error("Enhanced playback failed:", e);
+        }
     };
 
     const startReplay = () => {
@@ -185,14 +448,13 @@ export default function App() {
         const endFrame = gameHistory.find(h => h.step === 'END');
         const goFrame = gameHistory.find(h => h.step === 'GO');
 
-        if (!waitingFrame || !endFrame) {
-            setIsReplaying(false);
-            return;
+        if (!waitingFrame || !endFrame) { setIsReplaying(false); return; }
+
+        if (endFrame.audioBlob) {
+            playBlobWithGain(endFrame.audioBlob);
         }
 
         setGameState('WAITING');
-        // 回放不播放声音，以免混淆
-
         const goDelay = goFrame ? (goFrame.timestamp - waitingFrame.timestamp) : -1;
         const endDelay = endFrame.timestamp - waitingFrame.timestamp;
 
@@ -206,6 +468,10 @@ export default function App() {
             setWinReason(endFrame.winReason || null);
             setReactionTime(endFrame.reactionTime || 0);
             setIsReplaying(false);
+            if (replaySourceRef.current) {
+                try { replaySourceRef.current.stop(); } catch(e) {}
+                replaySourceRef.current = null;
+            }
         }, endDelay);
     };
 
@@ -213,42 +479,39 @@ export default function App() {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.repeat) return;
+            if (gameMode === 'VOICE' && gameState !== 'IDLE') return; 
             if (e.key.toLowerCase() === 'a') handleAction('p1');
             if (e.key.toLowerCase() === 'l') handleAction('p2');
             if (e.code === 'Space' && gameState === 'IDLE' && !isReplaying) startGame();
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [gameState, isReplaying]);
+    }, [gameState, isReplaying, gameMode]);
 
 
-    // --- 子组件：玩家区域 ---
-    const PlayerZone = ({ id, label, colorClass, keyLabel }: { id: 'p1' | 'p2', label: string, colorClass: string, keyLabel: string }) => {
+    // --- 界面组件 ---
+    const PlayerZone = ({ id, label, colorClass, keyLabel, subLabel }: { id: 'p1' | 'p2', label: string, colorClass: string, keyLabel: string, subLabel?: string }) => {
         const isWinner = gameState === 'ENDED' && winner === id;
         const isLoser = gameState === 'ENDED' && winner !== id && winner !== null;
-        
         let bgColor = colorClass;
         if (gameState === 'ENDED') {
             if (isWinner) bgColor = id === 'p1' ? 'bg-rose-500' : 'bg-sky-500';
             else if (isLoser) bgColor = 'bg-gray-100 grayscale opacity-40';
         }
         if (isReplaying && gameState === 'ENDED' && !isWinner) bgColor = 'bg-gray-200 opacity-30';
-
-        // 旋转逻辑：手机端(md以下) P1 旋转 180度，桌面端(md及以上) 不旋转
         const rotationClass = id === 'p1' ? 'rotate-180 md:rotate-0' : '';
 
         return (
             <div 
                 className={`flex-1 relative flex flex-col items-center justify-center transition-all duration-300 touch-manipulation select-none overflow-hidden ${bgColor}`}
                 onPointerDown={(e) => {
-                    e.preventDefault();
-                    handleAction(id);
+                    if (gameMode === 'TOUCH') { 
+                        e.preventDefault();
+                        handleAction(id);
+                    }
                 }}
             >
-                {/* 旋转容器 */}
                 <div className={`flex flex-col items-center justify-center w-full h-full p-4 ${rotationClass}`}>
-                    
-                    {/* 状态图标 */}
                     <div className={`transform transition-all duration-300 ${isWinner ? 'scale-125 -translate-y-4' : ''}`}>
                         {isLoser && winReason === 'FALSE_START' ? (
                              <div className="flex flex-col items-center text-red-500/80 font-bold animate-pulse">
@@ -256,26 +519,24 @@ export default function App() {
                                 <span className="text-2xl mt-2">抢跑!</span>
                             </div>
                         ) : (
-                            <Hand 
-                                size={isWinner ? 140 : 100} 
-                                strokeWidth={1.5} 
-                                className={`${isWinner ? 'text-white fill-white/20' : 'text-gray-800/20'} transition-colors duration-300`} 
-                            />
+                            <div className="relative">
+                                {gameMode === 'VOICE' ? (
+                                    <Mic size={isWinner ? 140 : 100} className={`${isWinner ? 'text-white' : 'text-gray-800/20'} transition-colors duration-300`} />
+                                ) : (
+                                    <Hand size={isWinner ? 140 : 100} strokeWidth={1.5} className={`${isWinner ? 'text-white fill-white/20' : 'text-gray-800/20'} transition-colors duration-300`} />
+                                )}
+                            </div>
                         )}
                     </div>
-
-                    {/* 文字标签 */}
                     <div className={`mt-6 text-center z-10 ${isWinner ? 'text-white' : 'text-gray-600/60'}`}>
                         <h2 className="text-3xl font-black tracking-wider">{label}</h2>
-                        <p className="text-sm font-medium mt-1 opacity-70 hidden md:block">
-                            {keyLabel}
-                        </p>
+                        {gameMode === 'VOICE' && subLabel && (
+                            <p className={`text-sm font-bold mt-1 ${isWinner ? 'text-white/90' : 'text-gray-500'}`}>{subLabel}</p>
+                        )}
+                        <p className="text-sm font-medium mt-1 opacity-70 hidden md:block">{gameMode === 'VOICE' ? '喊出声音!' : keyLabel}</p>
                     </div>
-
                     {isWinner && (
-                        <div className="absolute animate-bounce mt-32">
-                            <Trophy size={48} className="text-yellow-300 drop-shadow-md" fill="currentColor" />
-                        </div>
+                        <div className="absolute animate-bounce mt-32"><Trophy size={48} className="text-yellow-300 drop-shadow-md" fill="currentColor" /></div>
                     )}
                 </div>
             </div>
@@ -283,148 +544,145 @@ export default function App() {
     };
 
     return (
-        <div className="w-full h-screen flex flex-col bg-white overflow-hidden font-sans">
+        <div className="w-full h-screen flex flex-col bg-white overflow-hidden font-sans relative">
             
-            {/* 顶部简易栏 */}
+            {/* 简易头部 */}
             <div className="h-14 bg-white/80 backdrop-blur shadow-sm flex items-center justify-between px-4 z-30 shrink-0 absolute top-0 left-0 right-0 w-full pointer-events-none">
                 <div className="font-bold text-gray-400 text-sm flex items-center gap-1 pointer-events-auto">
-                    <Hand size={16}/> <span className="hidden sm:inline">举手对决</span>
+                     {gameMode === 'VOICE' ? <Mic size={16}/> : <Hand size={16}/>}
+                     <span className="hidden sm:inline">{gameMode === 'VOICE' ? '声控对决' : '举手对决'}</span>
                 </div>
-                
-                {/* 顶部操作按钮 */}
                 <div className="flex gap-2 pointer-events-auto">
-                     <button 
-                        onClick={() => setSoundEnabled(!soundEnabled)}
-                        className="p-2 text-gray-400 hover:text-gray-600 rounded-full"
-                    >
+                     <button onClick={() => setSoundEnabled(!soundEnabled)} className="p-2 text-gray-400 hover:text-gray-600 rounded-full">
                         {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
                     </button>
                     {gameState === 'ENDED' && !isReplaying && (
-                        <button 
-                            onClick={startGame}
-                            className="p-2 bg-indigo-600 active:bg-indigo-700 text-white rounded-full shadow-sm"
-                        >
-                            <RotateCcw size={18} />
+                        <button onClick={startGame} className={`p-2 active:bg-indigo-700 text-white rounded-full shadow-sm transition-all ${isSavingAudio ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600'}`} disabled={isSavingAudio}>
+                            {isSavingAudio ? <Loader2 size={18} className="animate-spin" /> : <RotateCcw size={18} />}
                         </button>
                     )}
                 </div>
             </div>
 
-            {/* IDLE 状态引导层 */}
+            {/* IDLE 状态 (含麦克风测试) */}
             {gameState === 'IDLE' && !isReplaying && (
-                <div className="absolute inset-0 z-50 bg-white/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-fade-in">
-                    <div className="mb-8">
-                        <div className="inline-block p-4 bg-indigo-100 rounded-full mb-4 text-indigo-600">
-                            <Hand size={48} strokeWidth={2} />
-                        </div>
-                        <h1 className="text-3xl font-black text-gray-800 mb-2">双人反应对决</h1>
-                        <p className="text-gray-500 max-w-xs mx-auto text-sm leading-relaxed">
-                            两人各执一端。看到屏幕中央出现 <strong className="text-green-600 text-lg">GO</strong> 信号时，立即点击。
+                <div className="absolute inset-0 z-40 bg-white/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-fade-in">
+                    
+                    {/* 模式切换 */}
+                    <div className="flex bg-gray-100 p-1 rounded-xl mb-6">
+                        <button onClick={() => setGameMode('TOUCH')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${gameMode === 'TOUCH' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-400'}`}>
+                            <Hand size={16} /> 触摸模式
+                        </button>
+                        <button onClick={() => setGameMode('VOICE')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${gameMode === 'VOICE' ? 'bg-white shadow-sm text-rose-500' : 'text-gray-400'}`}>
+                            <Mic size={16} /> 声音模式
+                        </button>
+                    </div>
+
+                    <div className="mb-6">
+                        <h1 className="text-3xl font-black text-gray-800 mb-2">{gameMode === 'VOICE' ? '谁先发声谁赢' : '双人反应对决'}</h1>
+                        <p className="text-gray-500 max-w-xs mx-auto text-sm">
+                            {gameMode === 'VOICE' ? '看到 GO 信号时，立即喊出声音。' : '看到 GO 信号时，立即点击屏幕。'}
                         </p>
                     </div>
 
+                    {/* 声音模式下的麦克风预检 */}
+                    {gameMode === 'VOICE' && (
+                        <div className="mb-8 w-full max-w-xs bg-gray-50 p-4 rounded-xl border border-gray-200">
+                            <div className="flex justify-between items-center mb-2 text-xs font-bold text-gray-500">
+                                <span className="flex items-center gap-1"><BarChart3 size={12}/> 麦克风测试</span>
+                                <span className={isMicInitialized ? "text-green-500" : "text-gray-400"}>
+                                    {isMicInitialized ? "已连接" : "未启动"}
+                                </span>
+                            </div>
+                            
+                            {/* 音量条 */}
+                            <div className="h-3 bg-gray-200 rounded-full overflow-hidden relative">
+                                <div className="absolute left-0 top-0 bottom-0 bg-green-500 transition-all duration-75" style={{ width: `${Math.min(currentVolume * 100, 100)}%` }}></div>
+                                <div className="absolute top-0 bottom-0 w-0.5 bg-red-400 left-[2%] z-10"></div> 
+                            </div>
+                            
+                            <div className="mt-3 flex gap-2">
+                                {!isMicInitialized ? (
+                                    <button onClick={initAudioEngine} className="flex-1 py-2 bg-gray-800 text-white text-xs font-bold rounded hover:bg-black transition-colors">
+                                        启动麦克风 (点击授权)
+                                    </button>
+                                ) : (
+                                    <button onClick={() => initAudioEngine()} className="flex-1 py-2 bg-white border border-gray-300 text-gray-600 text-xs font-bold rounded hover:bg-gray-50 flex items-center justify-center gap-1">
+                                        <RefreshCw size={10}/> 重置 Mic
+                                    </button>
+                                )}
+                            </div>
+                            <p className="text-[10px] text-gray-400 mt-2 text-left">
+                                * 如果音量条不动，请点击"重置"或检查系统输入设备。
+                            </p>
+                        </div>
+                    )}
+
                     <button 
                         onClick={startGame}
-                        className="w-full max-w-xs py-4 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-lg font-bold rounded-xl shadow-xl shadow-indigo-200 transition-all flex items-center justify-center gap-2"
+                        className={`w-full max-w-xs py-4 text-white text-lg font-bold rounded-xl shadow-xl transition-all flex items-center justify-center gap-2 active:scale-95
+                            ${gameMode === 'VOICE' ? 'bg-rose-500 hover:bg-rose-600 shadow-rose-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'}`}
                     >
                         <Play size={24} fill="currentColor" />
                         立即开始
                     </button>
-                    
-                     <div className="mt-8 flex gap-4 text-xs text-gray-400 font-medium">
-                         {/* 电脑端提示 */}
-                        <span className="hidden md:inline">键盘操作: 'A' (红方) vs 'L' (蓝方)</span>
-                        {/* 手机端提示 */}
-                        <span className="md:hidden">手机操作: 点击各自半区</span>
-                    </div>
                 </div>
             )}
 
             {/* 游戏主区域 */}
             <div className="flex-1 flex flex-col md:flex-row relative">
                 
-                {/* --- 中央信号指示器 (核心改进) --- */}
+                {/* 信号区 */}
                 {gameState !== 'IDLE' && (
                     <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40 pointer-events-none flex flex-col items-center justify-center">
-                        
-                        {/* VS 徽章 (Waiting阶段显示) */}
                         {gameState === 'WAITING' && (
-                            <div className="bg-white p-2 rounded-full shadow-lg border-4 border-gray-100 animate-pulse">
-                                <div className="w-16 h-16 md:w-24 md:h-24 rounded-full bg-orange-500 flex items-center justify-center text-white font-black text-xl md:text-2xl shadow-inner">
-                                    ...
+                            <div className="bg-white p-2 rounded-full shadow-lg border-4 border-gray-100 relative">
+                                {gameMode === 'VOICE' && (
+                                    <div className="absolute inset-0 rounded-full bg-rose-400 opacity-30 transition-transform duration-75 ease-out" style={{ transform: `scale(${1 + currentVolume})` }}></div>
+                                )}
+                                <div className="relative w-16 h-16 md:w-24 md:h-24 rounded-full bg-orange-500 flex items-center justify-center text-white font-black text-xl md:text-2xl shadow-inner z-10">
+                                    {gameMode === 'VOICE' ? <MicOff size={32}/> : '...'}
                                 </div>
                                 <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 whitespace-nowrap bg-orange-100 text-orange-600 text-xs px-2 py-1 rounded font-bold">
-                                    等待信号
+                                    {gameMode === 'VOICE' ? '保持安静...' : '等待信号'}
                                 </div>
                             </div>
                         )}
 
-                        {/* GO 信号 */}
                         {gameState === 'GO' && (
                             <div className="animate-bounce">
-                                <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-green-500 flex items-center justify-center text-white font-black text-3xl md:text-5xl shadow-2xl ring-8 ring-green-200">
-                                    GO!
+                                <div className={`w-24 h-24 md:w-32 md:h-32 rounded-full flex items-center justify-center text-white font-black text-3xl md:text-5xl shadow-2xl ring-8 ${gameMode === 'VOICE' ? 'bg-rose-500 ring-rose-200' : 'bg-green-500 ring-green-200'}`}>
+                                    {gameMode === 'VOICE' ? '喊!' : 'GO!'}
                                 </div>
                             </div>
                         )}
 
-                        {/* 结果展示 */}
                         {gameState === 'ENDED' && (
-                            <div className="flex flex-col items-center bg-white p-4 rounded-2xl shadow-2xl border border-gray-100 animate-pop-in">
+                            <div className="flex flex-col items-center bg-white p-4 rounded-2xl shadow-2xl border border-gray-100 animate-pop-in pointer-events-auto">
                                 <div className={`text-2xl md:text-3xl font-black mb-1 ${winner === 'p1' ? 'text-rose-600' : 'text-sky-600'}`}>
                                     {winner === 'p1' ? '红方胜' : '蓝方胜'}
+                                    {gameMode === 'VOICE' && <span className="text-gray-400 text-sm font-normal ml-2">(系统猜测)</span>}
                                 </div>
-                                {winReason === 'REACTION' && (
-                                    <div className="text-xl font-mono font-bold text-gray-700 bg-gray-100 px-3 py-1 rounded-lg">
-                                        {reactionTime} <span className="text-xs text-gray-500">ms</span>
-                                    </div>
-                                )}
-                                {winReason === 'FALSE_START' && (
-                                    <div className="text-red-500 font-bold text-sm">
-                                        对方抢跑犯规
-                                    </div>
-                                )}
-                                {isReplaying && (
-                                    <div className="mt-2 text-xs font-bold text-yellow-600 bg-yellow-100 px-2 py-0.5 rounded flex items-center gap-1">
-                                        <RotateCcw size={10} /> 回放中
-                                    </div>
-                                )}
+                                {winReason === 'REACTION' && <div className="text-xl font-mono font-bold text-gray-700 bg-gray-100 px-3 py-1 rounded-lg">{reactionTime} ms</div>}
+                                {detectedFreq > 0 && gameMode === 'VOICE' && <div className="text-xs text-gray-400 mt-1">检测频率: {detectedFreq}Hz</div>}
+                                {winReason === 'FALSE_START' && <div className="text-red-500 font-bold text-sm">{gameMode === 'VOICE' ? '提前发出声音!' : '对方抢跑犯规'}</div>}
+                                {isReplaying && <div className="mt-2 text-xs font-bold text-yellow-600 bg-yellow-100 px-2 py-0.5 rounded flex items-center gap-1"><Volume2 size={12} className="animate-pulse" /> 回放中...</div>}
                             </div>
                         )}
                     </div>
                 )}
 
-
-                {/* 玩家 1 (红方) */}
-                <PlayerZone 
-                    id="p1" 
-                    label="P1 红方" 
-                    keyLabel="键盘 'A'"
-                    colorClass="bg-rose-50" 
-                />
-
-                {/* 分割线 - 视觉辅助 */}
+                <PlayerZone id="p1" label="P1 红方" subLabel={gameMode === 'VOICE' ? "高音区" : undefined} keyLabel="键盘 'A'" colorClass="bg-rose-50" />
                 <div className="absolute inset-0 pointer-events-none z-10 flex md:flex-row flex-col">
                     <div className="md:w-1/2 w-full h-1/2 md:h-full border-b md:border-b-0 md:border-r border-gray-200/50"></div>
                 </div>
-
-                {/* 玩家 2 (蓝方) */}
-                <PlayerZone 
-                    id="p2" 
-                    label="P2 蓝方" 
-                    keyLabel="键盘 'L'"
-                    colorClass="bg-sky-50" 
-                />
+                <PlayerZone id="p2" label="P2 蓝方" subLabel={gameMode === 'VOICE' ? "低音区" : undefined} keyLabel="键盘 'L'" colorClass="bg-sky-50" />
                 
-                {/* 底部回放按钮 */}
                 {gameState === 'ENDED' && !isReplaying && gameHistory.length > 0 && (
                      <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-30 pointer-events-auto">
-                        <button 
-                            onClick={startReplay}
-                            className="flex items-center gap-2 px-5 py-2 bg-white/90 backdrop-blur border border-gray-200 text-gray-600 hover:bg-gray-50 rounded-full text-sm font-bold shadow-lg active:scale-95 transition-all"
-                        >
-                            <RotateCcw size={14} />
-                            看回放
+                        <button onClick={startReplay} className={`flex items-center gap-2 px-5 py-2 backdrop-blur border text-white rounded-full text-sm font-bold shadow-lg active:scale-95 transition-all ${gameMode === 'VOICE' ? 'bg-rose-500/90 border-rose-400 hover:bg-rose-600' : 'bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                            {gameMode === 'VOICE' ? <Volume2 size={16} /> : <RotateCcw size={14} />}
+                            {gameMode === 'VOICE' ? '听声音回放' : '看回放'}
                         </button>
                      </div>
                 )}
