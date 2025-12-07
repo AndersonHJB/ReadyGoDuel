@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, User, Activity, RefreshCw, BarChart3, Loader2 } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, User, Activity, RefreshCw, BarChart3, Loader2, Music } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
@@ -15,10 +15,11 @@ interface GameLog {
     reactionTime?: number;
     audioBlob?: Blob;
     detectedPitch?: number;
+    blobSize?: number; // 新增：记录大小用于调试
 }
 
 // --- 音效管理器 ---
-const playSound = (type: 'start' | 'go' | 'false' | 'win', mode: GameMode) => {
+const playSound = (type: 'start' | 'go' | 'false' | 'win' | 'test', mode: GameMode) => {
     if (mode === 'VOICE' && type === 'go') return; 
     try {
         const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -45,13 +46,6 @@ const playSound = (type: 'start' | 'go' | 'false' | 'win', mode: GameMode) => {
             gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
             oscillator.start(now);
             oscillator.stop(now + 0.3);
-        } else if (type === 'false') {
-            oscillator.type = 'sawtooth';
-            oscillator.frequency.setValueAtTime(150, now);
-            gainNode.gain.setValueAtTime(0.5, now);
-            gainNode.gain.linearRampToValueAtTime(0.01, now + 0.3);
-            oscillator.start(now);
-            oscillator.stop(now + 0.3);
         } else if (type === 'win') {
             const notes = [523.25, 659.25, 783.99]; 
             notes.forEach((freq, i) => {
@@ -66,6 +60,13 @@ const playSound = (type: 'start' | 'go' | 'false' | 'win', mode: GameMode) => {
                 osc.start(now + i * 0.1);
                 osc.stop(now + i * 0.1 + 0.4);
             });
+        } else if (type === 'test') { // 测试音
+            oscillator.type = 'triangle';
+            oscillator.frequency.setValueAtTime(440, now);
+            gainNode.gain.setValueAtTime(0.5, now);
+            gainNode.gain.linearRampToValueAtTime(0.01, now + 0.5);
+            oscillator.start(now);
+            oscillator.stop(now + 0.5);
         }
     } catch (e) {
         console.error("Audio playback failed", e);
@@ -84,7 +85,6 @@ const detectPitch = (buffer: Float32Array, sampleRate: number): number => {
     let bestCorrelation = 0;
     let lastCorrelation = 1;
 
-    // 降低采样率以提高性能
     for (let offset = 0; offset < SIZE; offset++) {
         let correlation = 0;
         for (let i = 0; i < SIZE - offset; i += 2) {
@@ -120,7 +120,8 @@ export default function App() {
     // Debug & 预检状态
     const [debugInfo, setDebugInfo] = useState({ state: 'init', mic: 'waiting', vol: 0 });
     const [isMicInitialized, setIsMicInitialized] = useState(false);
-    const [isSavingAudio, setIsSavingAudio] = useState(false); // 新增：正在保存录音状态
+    const [isSavingAudio, setIsSavingAudio] = useState(false);
+    const [lastRecordingSize, setLastRecordingSize] = useState<number>(0); // 调试显示用
 
     // 回放
     const [gameHistory, setGameHistory] = useState<GameLog[]>([]);
@@ -140,11 +141,7 @@ export default function App() {
     const analyserRef = useRef<AnalyserNode | null>(null);
     const micStreamRef = useRef<MediaStream | null>(null);
     const animationFrameRef = useRef<number | null>(null);
-    
-    // 延迟录音的 Timer
     const recordingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    
-    // 回放专用 Source Ref (用于停止)
     const replaySourceRef = useRef<AudioBufferSourceNode | null>(null);
 
     useEffect(() => { stateRef.current = gameState; }, [gameState]);
@@ -234,7 +231,6 @@ export default function App() {
             }
 
             const rms = Math.sqrt(sum / bufferLength);
-            
             const amplifiedVol = Math.min(rms * 15, 1.5); 
             setCurrentVolume(amplifiedVol);
             setDebugInfo(prev => ({ 
@@ -273,9 +269,8 @@ export default function App() {
     };
 
     const startGame = async () => {
-        if (isReplaying || isSavingAudio) return; // 防止在保存时开始
+        if (isReplaying || isSavingAudio) return;
 
-        // 清理上一次可能的录音定时器
         if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current);
 
         if (gameMode === 'VOICE' && !isMicInitialized) {
@@ -289,6 +284,7 @@ export default function App() {
         setReactionTime(0);
         setDetectedFreq(0);
         setIsSavingAudio(false);
+        setLastRecordingSize(0);
         historyRecorder.current = [];
         
         if (soundEnabled) playSound('start', gameMode);
@@ -309,15 +305,32 @@ export default function App() {
     const startRecording = () => {
         if (!micStreamRef.current) return;
         audioChunksRef.current = [];
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+        
+        // --- 核心修复：不传任何 options，让浏览器自己选择最佳格式 (兼容 iOS Safari) ---
         try {
-            const recorder = new MediaRecorder(micStreamRef.current, { mimeType });
+            const recorder = new MediaRecorder(micStreamRef.current);
             recorder.ondataavailable = (e) => {
-                if (e.data.size > 0) audioChunksRef.current.push(e.data);
+                // 确保数据非空才 push
+                if (e.data && e.data.size > 0) {
+                    audioChunksRef.current.push(e.data);
+                }
             };
             recorder.start();
             mediaRecorderRef.current = recorder;
-        } catch (e) { console.error("Rec error", e); }
+            console.log("Recording started with default mimeType:", recorder.mimeType);
+        } catch (e) {
+            console.error("Default recorder failed, trying fallback", e);
+            // Fallback: 尝试显式指定
+            try {
+                const mime = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : 'audio/webm';
+                const recorder = new MediaRecorder(micStreamRef.current, { mimeType: mime });
+                recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+                recorder.start();
+                mediaRecorderRef.current = recorder;
+            } catch (e2) {
+                console.error("Fallback recorder failed", e2);
+            }
+        }
     };
 
     const triggerSignal = () => {
@@ -333,7 +346,6 @@ export default function App() {
 
         const now = Date.now();
         
-        // 1. 立即计算结果
         let finalWinner = player;
         let finalReason: WinReason = 'REACTION';
         if (stateRef.current === 'WAITING') {
@@ -341,58 +353,56 @@ export default function App() {
             finalReason = 'FALSE_START';
         } else if (stateRef.current === 'GO') {
             finalReason = 'REACTION';
-            if (gameMode === 'VOICE' && triggerType === 'VOICE_TRIGGER') {
-                // 保持原判
-            }
         }
         const timeDiff = stateRef.current === 'GO' ? now - signalTimeRef.current : 0;
 
-        // 2. 立即更新UI状态 (此时录音还在继续)
         endGame(finalWinner, finalReason, timeDiff);
         if (soundEnabled) playSound(finalReason === 'FALSE_START' ? 'false' : 'win', gameMode);
 
-        // 3. 构建临时日志
         const logEntry: GameLog = {
             step: 'END',
             timestamp: now - startTimeRef.current,
             winner: finalWinner,
             winReason: finalReason,
             reactionTime: timeDiff,
-            // audioBlob 此时为空
         };
         historyRecorder.current.push(logEntry);
         setGameHistory([...historyRecorder.current]);
 
-        // 4. 处理录音结束逻辑
         if (gameMode === 'VOICE') {
-            setIsSavingAudio(true); // 锁定开始按钮
-            
-            // --- 核心修改：延迟 800ms 停止录音 ---
+            setIsSavingAudio(true);
+            // 录制 1.5 秒的“尾音”
             recordingTimeoutRef.current = setTimeout(() => {
                 stopRecordingAndSave(logEntry);
-            }, 800); 
+            }, 1500); 
         } else {
-             // 触摸模式直接结束
              stopRecordingAndSave(logEntry); 
         }
     };
 
     const stopRecordingAndSave = (logEntry: GameLog) => {
         if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-            mediaRecorderRef.current.requestData(); // 强制刷新缓冲区
+            mediaRecorderRef.current.requestData();
             mediaRecorderRef.current.stop();
             
-            // 给 ondataavailable 一点时间处理最后的数据
+            // 等待数据收集
             setTimeout(() => {
-                const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
-                if (audioChunksRef.current.length > 0) {
-                    const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+                const chunks = audioChunksRef.current;
+                const totalSize = chunks.reduce((acc, chunk) => acc + chunk.size, 0);
+                setLastRecordingSize(totalSize); // 更新 UI 用于调试
+
+                if (totalSize > 0) {
+                    // 使用 recorder 的实际 mimeType，而不是猜测
+                    const mimeType = mediaRecorderRef.current?.mimeType || 'audio/webm'; 
+                    const audioBlob = new Blob(chunks, { type: mimeType });
                     logEntry.audioBlob = audioBlob;
+                    logEntry.blobSize = totalSize;
                     
-                    // 强制更新 React 状态，让回放按钮生效
                     setGameHistory([...historyRecorder.current]);
+                } else {
+                    console.warn("Recording size is 0 bytes!");
                 }
-                setIsSavingAudio(false); // 解锁
+                setIsSavingAudio(false);
             }, 100);
         } else {
             setIsSavingAudio(false);
@@ -406,17 +416,13 @@ export default function App() {
         setReactionTime(time);
     };
 
-    // --- 回放功能增强版 (带8倍音量放大) ---
     const playBlobWithGain = async (blob: Blob) => {
         try {
-            let ctx = audioContextRef.current;
-            if (!ctx || ctx.state === 'closed') {
-                 const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-                 ctx = new AudioContextClass();
-                 audioContextRef.current = ctx;
-            }
-            if (ctx.state === 'suspended') await ctx.resume();
-
+            // 每次回放都检查/新建 Context，防止旧 Context 状态异常
+            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+            const ctx = new AudioContextClass(); // 新建更稳妥
+            audioContextRef.current = ctx; // 更新引用
+            
             const arrayBuffer = await blob.arrayBuffer();
             const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
 
@@ -424,7 +430,7 @@ export default function App() {
             source.buffer = audioBuffer;
 
             const gainNode = ctx.createGain();
-            gainNode.gain.value = 8.0; // 放大 8 倍！
+            gainNode.gain.value = 8.0; // 放大音量
 
             source.connect(gainNode);
             gainNode.connect(ctx.destination);
@@ -432,7 +438,8 @@ export default function App() {
             replaySourceRef.current = source;
             source.start(0);
         } catch (e) {
-            console.error("Enhanced playback failed:", e);
+            console.error("Playback failed:", e);
+            alert("回放失败：可能是录音格式不兼容或数据损坏。");
         }
     };
 
@@ -607,13 +614,18 @@ export default function App() {
                                         启动麦克风 (点击授权)
                                     </button>
                                 ) : (
-                                    <button onClick={() => initAudioEngine()} className="flex-1 py-2 bg-white border border-gray-300 text-gray-600 text-xs font-bold rounded hover:bg-gray-50 flex items-center justify-center gap-1">
-                                        <RefreshCw size={10}/> 重置 Mic
-                                    </button>
+                                    <>
+                                        <button onClick={() => initAudioEngine()} className="flex-1 py-2 bg-white border border-gray-300 text-gray-600 text-xs font-bold rounded hover:bg-gray-50 flex items-center justify-center gap-1">
+                                            <RefreshCw size={10}/> 重置 Mic
+                                        </button>
+                                        <button onClick={() => playSound('test', 'VOICE')} className="flex-1 py-2 bg-white border border-gray-300 text-gray-600 text-xs font-bold rounded hover:bg-gray-50 flex items-center justify-center gap-1">
+                                            <Music size={10}/> 播放测试音
+                                        </button>
+                                    </>
                                 )}
                             </div>
                             <p className="text-[10px] text-gray-400 mt-2 text-left">
-                                * 如果音量条不动，请点击"重置"或检查系统输入设备。
+                                * 如果音量条动了但听不到"测试音"，请检查系统音量。
                             </p>
                         </div>
                     )}
@@ -666,6 +678,19 @@ export default function App() {
                                 {winReason === 'REACTION' && <div className="text-xl font-mono font-bold text-gray-700 bg-gray-100 px-3 py-1 rounded-lg">{reactionTime} ms</div>}
                                 {detectedFreq > 0 && gameMode === 'VOICE' && <div className="text-xs text-gray-400 mt-1">检测频率: {detectedFreq}Hz</div>}
                                 {winReason === 'FALSE_START' && <div className="text-red-500 font-bold text-sm">{gameMode === 'VOICE' ? '提前发出声音!' : '对方抢跑犯规'}</div>}
+                                
+                                {/* 录音状态显示 */}
+                                {gameMode === 'VOICE' && lastRecordingSize > 0 && (
+                                    <div className="mt-1 text-[10px] text-gray-400 border border-gray-200 rounded px-1">
+                                        录音大小: {(lastRecordingSize/1024).toFixed(1)} KB
+                                    </div>
+                                )}
+                                {gameMode === 'VOICE' && lastRecordingSize === 0 && (
+                                    <div className="mt-1 text-[10px] text-red-400">
+                                        录音失败 (0 KB)
+                                    </div>
+                                )}
+
                                 {isReplaying && <div className="mt-2 text-xs font-bold text-yellow-600 bg-yellow-100 px-2 py-0.5 rounded flex items-center gap-1"><Volume2 size={12} className="animate-pulse" /> 回放中...</div>}
                             </div>
                         )}
