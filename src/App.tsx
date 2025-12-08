@@ -87,6 +87,84 @@ const Confetti = () => {
     return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-50" />;
 };
 
+// --- 声纹可视化组件 ---
+const AudioVisualizer = ({ analyser, color = '#fbbf24' }: { analyser: AnalyserNode | null, color?: string }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+
+    useEffect(() => {
+        if (!analyser || !canvasRef.current) return;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        // 设置画布大小（两倍清晰度）
+        const dpr = window.devicePixelRatio || 1;
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.scale(dpr, dpr);
+
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        
+        let animationId: number;
+
+        const render = () => {
+            animationId = requestAnimationFrame(render);
+            analyser.getByteFrequencyData(dataArray);
+
+            const width = rect.width;
+            const height = rect.height;
+            ctx.clearRect(0, 0, width, height);
+
+            // 绘制参数
+            const barWidth = 6;
+            const gap = 4;
+            const barCount = Math.floor(width / (barWidth + gap));
+            const step = Math.floor(bufferLength / barCount); 
+
+            // 居中绘制
+            const totalWidth = barCount * (barWidth + gap);
+            const startX = (width - totalWidth) / 2;
+
+            for (let i = 0; i < barCount; i++) {
+                // 获取当前频段的平均值
+                let value = 0;
+                for(let j=0; j<step; j++) {
+                    value += dataArray[i * step + j];
+                }
+                value = value / step;
+
+                // 动态高度 (增加一点基础高度)
+                const percent = value / 255;
+                const barHeight = Math.max(4, percent * height * 0.8); 
+                
+                const x = startX + i * (barWidth + gap);
+                const y = (height - barHeight) / 2; // 垂直居中
+
+                // 绘制圆角条
+                ctx.fillStyle = color;
+                ctx.globalAlpha = 0.8 + percent * 0.2; // 越响越不透明
+                
+                // 简单的圆角矩形绘制
+                ctx.beginPath();
+                ctx.roundRect(x, y, barWidth, barHeight, 4);
+                ctx.fill();
+            }
+        };
+        render();
+
+        return () => cancelAnimationFrame(animationId);
+    }, [analyser, color]);
+
+    return (
+        <div className="flex flex-col items-center justify-center bg-white/90 backdrop-blur-sm p-4 rounded-3xl shadow-xl border border-gray-100 animate-in fade-in zoom-in duration-300">
+            <div className="text-xs font-bold text-gray-400 mb-2 tracking-widest uppercase">Voice Replay</div>
+            <canvas ref={canvasRef} style={{ width: '200px', height: '60px' }} />
+        </div>
+    );
+};
+
 // --- 工具函数：安全播放音频 ---
 const safePlaySound = (type: 'start' | 'go' | 'false' | 'win' | 'test', mode: GameMode) => {
     // 声音模式下GO不发声，避免触发麦克风
@@ -203,6 +281,9 @@ export default function App() {
     const [gameHistory, setGameHistory] = useState<GameLog[]>([]);
     const [isReplaying, setIsReplaying] = useState(false);
     const [replayShockwave, setReplayShockwave] = useState<Player>(null); 
+    
+    // 专用 Ref: 传递 Analyser 给可视化组件
+    const replayAnalyserRef = useRef<AnalyserNode | null>(null);
 
     // --- Refs ---
     const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -518,6 +599,8 @@ export default function App() {
         const t2 = setTimeout(() => {
             setIsReplaying(false);
             setReplayShockwave(null);
+            // 停止 Analyser 绘制
+            replayAnalyserRef.current = null;
             if (replaySourceRef.current) {
                 try { replaySourceRef.current.stop(); } catch(e){}
             }
@@ -538,7 +621,13 @@ export default function App() {
             const gainNode = ctx.createGain();
             gainNode.gain.value = 8.0; 
 
-            source.connect(gainNode);
+            // --- 核心：连接到分析器用于可视化 ---
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 64; // 较小的FFT尺寸，条带更宽
+            replayAnalyserRef.current = analyser; // 保存引用以供组件使用
+
+            source.connect(analyser);
+            analyser.connect(gainNode);
             gainNode.connect(ctx.destination);
 
             replaySourceRef.current = source;
@@ -574,16 +663,13 @@ export default function App() {
         const rotationClass = id === 'p1' ? 'rotate-180 md:rotate-0' : '';
         const showShockwave = isReplaying && replayShockwave === id;
 
-        // 决定显示的图标
+        // 核心修改：决定显示的图标
         let IconComponent;
-        if (isWinner) {
-            // 胜利时：直接显示大奖杯，替换原有的手/麦克风
+        if (isWinner && !isReplaying) {
             IconComponent = <Trophy size={140} className="text-yellow-300 drop-shadow-lg animate-bounce" fill="currentColor" />;
         } else if (gameMode === 'VOICE') {
-            // 非胜利（准备、进行中、或失败）：显示麦克风
             IconComponent = <Mic size={100} className="text-gray-800/20 transition-colors duration-300" />;
         } else {
-            // 非胜利：显示手掌
             IconComponent = <Hand size={100} strokeWidth={1.5} className="text-gray-800/20 transition-colors duration-300" />;
         }
 
@@ -595,7 +681,7 @@ export default function App() {
                 }}
             >
                 <div className={`flex flex-col items-center justify-center w-full h-full p-4 ${rotationClass}`}>
-                    <div className={`transform transition-all duration-300 ${isWinner ? 'scale-125 -translate-y-4' : ''}`}>
+                    <div className={`transform transition-all duration-300 ${isWinner && !isReplaying ? 'scale-125 -translate-y-4' : ''}`}>
                         {isLoser && winReason === 'FALSE_START' ? (
                              <div className="flex flex-col items-center text-red-500/80 font-bold animate-pulse">
                                 <AlertTriangle size={80} /> <span className="text-2xl mt-2">抢跑!</span>
@@ -629,8 +715,8 @@ export default function App() {
 
     return (
         <div className="w-full h-screen flex flex-col bg-white overflow-hidden font-sans relative">
-            {/* 撒礼花特效 */}
-            {(gameState === 'ENDED' || isReplaying) && winner && winReason !== 'FALSE_START' && <Confetti />}
+            {/* 撒礼花特效 (回放时隐藏) */}
+            {gameState === 'ENDED' && !isReplaying && winner && winReason !== 'FALSE_START' && <Confetti />}
 
             <div className="h-14 bg-white/80 backdrop-blur shadow-sm flex items-center justify-between px-4 z-30 shrink-0 absolute top-0 left-0 right-0 w-full pointer-events-none">
                 <div className="font-bold text-gray-400 text-sm flex items-center gap-1 pointer-events-auto">
@@ -715,12 +801,21 @@ export default function App() {
                         )}
                         {gameState === 'ENDED' && (
                             <div className="flex flex-col items-center bg-white p-4 rounded-2xl shadow-2xl border border-gray-100 animate-pop-in pointer-events-auto">
-                                <div className={`text-2xl md:text-3xl font-black mb-1 ${winner === 'p1' ? 'text-rose-600' : 'text-sky-600'}`}>{winner === 'p1' ? '红方胜' : '蓝方胜'}</div>
-                                {winReason === 'REACTION' && <div className="text-xl font-mono font-bold text-gray-700 bg-gray-100 px-3 py-1 rounded-lg">{reactionTime} ms</div>}
-                                {detectedFreq > 0 && gameMode === 'VOICE' && <div className="text-xs text-gray-400 mt-1">检测频率: {detectedFreq}Hz</div>}
-                                {winReason === 'FALSE_START' && <div className="text-red-500 font-bold text-sm">对方抢跑犯规</div>}
+                                {!isReplaying && (
+                                    <>
+                                        <div className={`text-2xl md:text-3xl font-black mb-1 ${winner === 'p1' ? 'text-rose-600' : 'text-sky-600'}`}>{winner === 'p1' ? '红方胜' : '蓝方胜'}</div>
+                                        {winReason === 'REACTION' && <div className="text-xl font-mono font-bold text-gray-700 bg-gray-100 px-3 py-1 rounded-lg">{reactionTime} ms</div>}
+                                        {detectedFreq > 0 && gameMode === 'VOICE' && <div className="text-xs text-gray-400 mt-1">检测频率: {detectedFreq}Hz</div>}
+                                        {winReason === 'FALSE_START' && <div className="text-red-500 font-bold text-sm">对方抢跑犯规</div>}
+                                    </>
+                                )}
+                                
                                 {isReplaying ? (
-                                    <div className="mt-2 text-xs font-bold text-yellow-600 bg-yellow-100 px-3 py-1 rounded-full flex items-center gap-1 animate-pulse border border-yellow-200"><Volume2 size={12} /> 高光回放中</div>
+                                    // 核心修改：使用声纹可视化组件替换原来的 Loading 文本
+                                    <AudioVisualizer 
+                                        analyser={replayAnalyserRef.current} 
+                                        color={winner === 'p1' ? '#f43f5e' : (winner === 'p2' ? '#0ea5e9' : '#fbbf24')} 
+                                    />
                                 ) : (
                                     gameMode === 'VOICE' && lastRecordingSize > 0 && <div className="mt-1 text-[10px] text-gray-400 border border-gray-200 rounded px-1">录音: {(lastRecordingSize/1024).toFixed(1)} KB</div>
                                 )}
