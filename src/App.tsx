@@ -733,10 +733,10 @@ export default function App() {
                 <div className="absolute inset-0 pointer-events-none z-10 flex md:flex-row flex-col"><div className="md:w-1/2 w-full h-1/2 md:h-full border-b md:border-b-0 md:border-r border-gray-200/50"></div></div>
                 <PlayerZone id="p2" label="P2 蓝方" subLabel="低音区" keyLabel="键盘 'L'" colorClass="bg-sky-50" />
                 
-                {gameState === 'ENDED' && !isReplaying && gameHistory.length > 0 && !isSavingAudio && (
+                {gameState === 'ENDED' && !isReplaying && gameHistory.length > 0 && !isSavingAudio && gameMode === 'VOICE' && (
                      <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-30 pointer-events-auto">
-                        <button onClick={startReplay} className={`flex items-center gap-2 px-5 py-2 backdrop-blur border text-white rounded-full text-sm font-bold shadow-lg active:scale-95 transition-all ${gameMode === 'VOICE' ? 'bg-rose-500/90 border-rose-400 hover:bg-rose-600' : 'bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                            {gameMode === 'VOICE' ? <Volume2 size={16} /> : <RotateCcw size={14} />} {gameMode === 'VOICE' ? '高光时刻' : '看回放'}
+                        <button onClick={startReplay} className={`flex items-center gap-2 px-5 py-2 backdrop-blur border text-white rounded-full text-sm font-bold shadow-lg active:scale-95 transition-all bg-rose-500/90 border-rose-400 hover:bg-rose-600`}>
+                            <Volume2 size={16} /> 高光时刻
                         </button>
                      </div>
                 )}
