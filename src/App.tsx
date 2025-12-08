@@ -21,6 +21,72 @@ interface GameLog {
     signalTimestamp?: number; 
 }
 
+// --- 简单的 Canvas 礼花组件 ---
+const Confetti = () => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const particles: any[] = [];
+        const colors = ['#FFC700', '#FF0000', '#2E3192', '#41BBC7', '#73FF00', '#FF00EA'];
+
+        for (let i = 0; i < 150; i++) {
+            particles.push({
+                x: window.innerWidth / 2,
+                y: window.innerHeight / 2,
+                w: Math.random() * 10 + 5,
+                h: Math.random() * 10 + 5,
+                vx: (Math.random() - 0.5) * 20,
+                vy: (Math.random() - 0.5) * 20,
+                color: colors[Math.floor(Math.random() * colors.length)],
+                gravity: 0.1 + Math.random() * 0.2,
+                rotation: Math.random() * 360,
+                rotationSpeed: (Math.random() - 0.5) * 10
+            });
+        }
+
+        let animationId: number;
+        const render = () => {
+            if (!canvas || !ctx) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            particles.forEach((p, index) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += p.gravity;
+                p.rotation += p.rotationSpeed;
+                p.vx *= 0.96; // 阻力
+                p.vy *= 0.96;
+
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate((p.rotation * Math.PI) / 180);
+                ctx.fillStyle = p.color;
+                ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+                ctx.restore();
+
+                if (p.y > canvas.height) particles.splice(index, 1);
+            });
+
+            if (particles.length > 0) {
+                animationId = requestAnimationFrame(render);
+            }
+        };
+        render();
+
+        return () => cancelAnimationFrame(animationId);
+    }, []);
+
+    return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-50" />;
+};
+
 // --- 工具函数：安全播放音频 ---
 const safePlaySound = (type: 'start' | 'go' | 'false' | 'win' | 'test', mode: GameMode) => {
     // 声音模式下GO不发声，避免触发麦克风
@@ -253,7 +319,6 @@ export default function App() {
             setCurrentVolume(displayVol);
 
             // --- 游戏触发逻辑 ---
-            // 只有在等待或GO状态，且不在回放时才触发
             if ((stateRef.current === 'WAITING' || stateRef.current === 'GO') && !isReplayingRef.current) {
                 if (rms > 0.02) { 
                     const pitch = detectPitch(dataArray, audioContextRef.current.sampleRate);
@@ -281,7 +346,6 @@ export default function App() {
                 if (!success) { setGameMode('TOUCH'); return; } 
             }
             
-            // 强制重启 Loop
             startMonitoringLoop();
             startRecording(); 
         }
@@ -322,7 +386,6 @@ export default function App() {
     };
 
     const triggerSignal = () => {
-        // 双重保险：如果当前不是等待状态（比如已经抢跑结束），绝不发出GO信号
         if (stateRef.current !== 'WAITING') return;
 
         const now = Date.now();
@@ -354,7 +417,6 @@ export default function App() {
     };
 
     const finishGame = (triggerPlayer: Player, triggerType: 'TOUCH' | 'VOICE_TRIGGER') => {
-        // 核心修复：一旦出结果，立即杀死 GO 信号定时器！
         if (timerRef.current) clearTimeout(timerRef.current);
 
         const now = Date.now();
@@ -429,7 +491,6 @@ export default function App() {
         
         setIsReplaying(true);
         setReplayShockwave(null);
-        // 注意：不重置 GameState，保持 ENDED 状态，防止触发麦克风逻辑
 
         const endFrame = gameHistory.find(h => h.step === 'END');
         if (!endFrame) { setIsReplaying(false); return; }
@@ -440,17 +501,15 @@ export default function App() {
         if (endFrame.audioBlob && endFrame.recordingStartTime && endFrame.triggerTimestamp) {
             const triggerTime = endFrame.triggerTimestamp;
             const recStart = endFrame.recordingStartTime;
-            // 回放策略：定位到触发前 0.5s 开始
             const idealPlayStart = triggerTime - 500; 
             seekOffset = Math.max(0, (idealPlayStart - recStart) / 1000);
-            timeToVisualTrigger = 500; // 音频从触发前0.5s开始，所以0.5s后显示震波
+            timeToVisualTrigger = 500; 
         }
 
         if (endFrame.audioBlob) {
             await playBlobSlice(endFrame.audioBlob, seekOffset);
         }
 
-        // UI 动画序列 (只做视觉效果，不改游戏逻辑状态)
         const t1 = setTimeout(() => {
             if (!isReplayingRef.current) return;
             setReplayShockwave(endFrame.winner || null);
@@ -515,6 +574,19 @@ export default function App() {
         const rotationClass = id === 'p1' ? 'rotate-180 md:rotate-0' : '';
         const showShockwave = isReplaying && replayShockwave === id;
 
+        // 决定显示的图标
+        let IconComponent;
+        if (isWinner) {
+            // 胜利时：直接显示大奖杯，替换原有的手/麦克风
+            IconComponent = <Trophy size={140} className="text-yellow-300 drop-shadow-lg animate-bounce" fill="currentColor" />;
+        } else if (gameMode === 'VOICE') {
+            // 非胜利（准备、进行中、或失败）：显示麦克风
+            IconComponent = <Mic size={100} className="text-gray-800/20 transition-colors duration-300" />;
+        } else {
+            // 非胜利：显示手掌
+            IconComponent = <Hand size={100} strokeWidth={1.5} className="text-gray-800/20 transition-colors duration-300" />;
+        }
+
         return (
             <div 
                 className={`flex-1 relative flex flex-col items-center justify-center transition-all duration-300 touch-manipulation select-none overflow-hidden ${bgColor}`}
@@ -523,49 +595,28 @@ export default function App() {
                 }}
             >
                 <div className={`flex flex-col items-center justify-center w-full h-full p-4 ${rotationClass}`}>
-                    {/* Main Icon Area */}
-                    <div className={`relative transform transition-all duration-300 ${isWinner ? 'scale-125' : ''}`}>
-                        
-                        {/* Shockwave (Behind/Overlay) */}
-                        {showShockwave && (
-                            <>
-                                <div className="absolute inset-0 rounded-full bg-white opacity-80 animate-ping" style={{ animationDuration: '0.6s' }}></div>
-                                <div className="absolute -inset-12 rounded-full border-4 border-white opacity-60 animate-ping" style={{ animationDuration: '1s' }}></div>
-                                <div className="absolute -inset-20 flex items-center justify-center z-20">
-                                    <Zap size={120} className="text-yellow-300 drop-shadow-lg animate-pulse" fill="currentColor"/>
-                                </div>
-                            </>
-                        )}
-
-                        {/* Victory Trophy - Directly above icon */}
-                        {isWinner && (
-                            <div className="absolute -top-24 left-1/2 -translate-x-1/2 animate-bounce z-30 drop-shadow-xl">
-                                <Trophy size={64} className="text-yellow-300 fill-current stroke-orange-500 stroke-2" />
-                            </div>
-                        )}
-
-                        {/* Main Icon */}
+                    <div className={`transform transition-all duration-300 ${isWinner ? 'scale-125 -translate-y-4' : ''}`}>
                         {isLoser && winReason === 'FALSE_START' ? (
                              <div className="flex flex-col items-center text-red-500/80 font-bold animate-pulse">
                                 <AlertTriangle size={80} /> <span className="text-2xl mt-2">抢跑!</span>
                             </div>
                         ) : (
-                            <div className="relative z-10">
-                                {gameMode === 'VOICE' ? (
-                                    <Mic size={isWinner ? 140 : 100} className={`${isWinner ? 'text-white' : 'text-gray-800/20'} transition-colors duration-300`} />
-                                ) : (
-                                    <Hand size={isWinner ? 140 : 100} strokeWidth={1.5} className={`${isWinner ? 'text-white fill-white/20' : 'text-gray-800/20'} transition-colors duration-300`} />
+                            <div className="relative">
+                                {showShockwave && (
+                                    <>
+                                        <div className="absolute inset-0 rounded-full bg-white opacity-80 animate-ping" style={{ animationDuration: '0.6s' }}></div>
+                                        <div className="absolute -inset-12 rounded-full border-4 border-white opacity-60 animate-ping" style={{ animationDuration: '1s' }}></div>
+                                        <div className="absolute -inset-20 flex items-center justify-center z-20">
+                                            <Zap size={120} className="text-yellow-300 drop-shadow-lg animate-pulse" fill="currentColor"/>
+                                        </div>
+                                    </>
                                 )}
+                                {IconComponent}
                             </div>
                         )}
                     </div>
-
-                    {/* Text Area */}
                     <div className={`mt-6 text-center z-10 ${isWinner ? 'text-white' : 'text-gray-600/60'}`}>
                         <h2 className="text-3xl font-black tracking-wider">{label}</h2>
-                        
-                        {showShockwave && <div className="text-lg font-black text-yellow-300 bg-black/20 px-3 py-1 rounded mt-1 animate-bounce">SOUND DETECTED!</div>}
-                        
                         {gameMode === 'VOICE' && subLabel && !showShockwave && (
                             <p className={`text-sm font-bold mt-1 ${isWinner ? 'text-white/90' : 'text-gray-500'}`}>{subLabel}</p>
                         )}
@@ -578,6 +629,9 @@ export default function App() {
 
     return (
         <div className="w-full h-screen flex flex-col bg-white overflow-hidden font-sans relative">
+            {/* 撒礼花特效 */}
+            {(gameState === 'ENDED' || isReplaying) && winner && winReason !== 'FALSE_START' && <Confetti />}
+
             <div className="h-14 bg-white/80 backdrop-blur shadow-sm flex items-center justify-between px-4 z-30 shrink-0 absolute top-0 left-0 right-0 w-full pointer-events-none">
                 <div className="font-bold text-gray-400 text-sm flex items-center gap-1 pointer-events-auto">
                      {gameMode === 'VOICE' ? <Mic size={16}/> : <Hand size={16}/>}
@@ -679,11 +733,10 @@ export default function App() {
                 <div className="absolute inset-0 pointer-events-none z-10 flex md:flex-row flex-col"><div className="md:w-1/2 w-full h-1/2 md:h-full border-b md:border-b-0 md:border-r border-gray-200/50"></div></div>
                 <PlayerZone id="p2" label="P2 蓝方" subLabel="低音区" keyLabel="键盘 'L'" colorClass="bg-sky-50" />
                 
-                {/* 仅在声音模式下显示回放按钮 */}
-                {gameState === 'ENDED' && !isReplaying && gameHistory.length > 0 && !isSavingAudio && gameMode === 'VOICE' && (
+                {gameState === 'ENDED' && !isReplaying && gameHistory.length > 0 && !isSavingAudio && (
                      <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-30 pointer-events-auto">
-                        <button onClick={startReplay} className="flex items-center gap-2 px-5 py-2 backdrop-blur border text-white rounded-full text-sm font-bold shadow-lg active:scale-95 transition-all bg-rose-500/90 border-rose-400 hover:bg-rose-600">
-                            <Volume2 size={16} /> 听高光回放
+                        <button onClick={startReplay} className={`flex items-center gap-2 px-5 py-2 backdrop-blur border text-white rounded-full text-sm font-bold shadow-lg active:scale-95 transition-all ${gameMode === 'VOICE' ? 'bg-rose-500/90 border-rose-400 hover:bg-rose-600' : 'bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                            {gameMode === 'VOICE' ? <Volume2 size={16} /> : <RotateCcw size={14} />} {gameMode === 'VOICE' ? '高光时刻' : '看回放'}
                         </button>
                      </div>
                 )}
