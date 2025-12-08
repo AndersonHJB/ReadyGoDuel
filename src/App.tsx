@@ -87,7 +87,7 @@ const Confetti = () => {
     return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-50" />;
 };
 
-// --- 声纹可视化组件 ---
+// --- 声纹可视化组件 (修复版：独立的白色卡片) ---
 const AudioVisualizer = ({ analyser, color = '#fbbf24' }: { analyser: AnalyserNode | null, color?: string }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -97,7 +97,6 @@ const AudioVisualizer = ({ analyser, color = '#fbbf24' }: { analyser: AnalyserNo
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
-        // 设置画布大小（两倍清晰度）
         const dpr = window.devicePixelRatio || 1;
         const rect = canvas.getBoundingClientRect();
         canvas.width = rect.width * dpr;
@@ -117,38 +116,32 @@ const AudioVisualizer = ({ analyser, color = '#fbbf24' }: { analyser: AnalyserNo
             const height = rect.height;
             ctx.clearRect(0, 0, width, height);
 
-            // 绘制参数
             const barWidth = 6;
-            const gap = 4;
+            const gap = 5;
             const barCount = Math.floor(width / (barWidth + gap));
             const step = Math.floor(bufferLength / barCount); 
 
-            // 居中绘制
             const totalWidth = barCount * (barWidth + gap);
             const startX = (width - totalWidth) / 2;
 
             for (let i = 0; i < barCount; i++) {
-                // 获取当前频段的平均值
                 let value = 0;
                 for(let j=0; j<step; j++) {
                     value += dataArray[i * step + j];
                 }
                 value = value / step;
 
-                // 动态高度 (增加一点基础高度)
                 const percent = value / 255;
-                const barHeight = Math.max(4, percent * height * 0.8); 
+                const barHeight = Math.max(6, percent * height * 0.8); 
                 
                 const x = startX + i * (barWidth + gap);
-                const y = (height - barHeight) / 2; // 垂直居中
+                const y = (height - barHeight) / 2;
 
-                // 绘制圆角条
                 ctx.fillStyle = color;
-                ctx.globalAlpha = 0.8 + percent * 0.2; // 越响越不透明
+                ctx.globalAlpha = 0.4 + percent * 0.6; 
                 
-                // 简单的圆角矩形绘制
                 ctx.beginPath();
-                ctx.roundRect(x, y, barWidth, barHeight, 4);
+                ctx.roundRect(x, y, barWidth, barHeight, 10);
                 ctx.fill();
             }
         };
@@ -158,16 +151,18 @@ const AudioVisualizer = ({ analyser, color = '#fbbf24' }: { analyser: AnalyserNo
     }, [analyser, color]);
 
     return (
-        <div className="flex flex-col items-center justify-center bg-white/90 backdrop-blur-sm p-4 rounded-3xl shadow-xl border border-gray-100 animate-in fade-in zoom-in duration-300">
-            <div className="text-xs font-bold text-gray-400 mb-2 tracking-widest uppercase">Voice Replay</div>
-            <canvas ref={canvasRef} style={{ width: '200px', height: '60px' }} />
+        // 恢复了白色卡片背景 (画圈部分)，且增加了阴影，让它看起来是悬浮的
+        <div className="flex flex-col items-center justify-center bg-white px-8 py-6 rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.15)] animate-in fade-in zoom-in duration-300 z-50">
+            <div className="text-xs font-bold text-gray-400 mb-4 tracking-[0.2em] uppercase flex items-center gap-2">
+                 <Activity size={14} className="text-gray-300"/> VOICE REPLAY
+            </div>
+            <canvas ref={canvasRef} style={{ width: '220px', height: '60px' }} />
         </div>
     );
 };
 
 // --- 工具函数：安全播放音频 ---
 const safePlaySound = (type: 'start' | 'go' | 'false' | 'win' | 'test', mode: GameMode) => {
-    // 声音模式下GO不发声，避免触发麦克风
     if (mode === 'VOICE' && type === 'go') return; 
     try {
         const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -663,7 +658,7 @@ export default function App() {
         const rotationClass = id === 'p1' ? 'rotate-180 md:rotate-0' : '';
         const showShockwave = isReplaying && replayShockwave === id;
 
-        // 核心修改：决定显示的图标
+        // 决定显示的图标
         let IconComponent;
         if (isWinner && !isReplaying) {
             IconComponent = <Trophy size={140} className="text-yellow-300 drop-shadow-lg animate-bounce" fill="currentColor" />;
@@ -800,7 +795,8 @@ export default function App() {
                             </div>
                         )}
                         {gameState === 'ENDED' && (
-                            <div className="flex flex-col items-center bg-white p-4 rounded-2xl shadow-2xl border border-gray-100 animate-pop-in pointer-events-auto">
+                            // 动态 class：回放时去除白色背景和阴影
+                            <div className={`flex flex-col items-center ${isReplaying ? '' : 'bg-white p-4 rounded-2xl shadow-2xl border border-gray-100'} animate-pop-in pointer-events-auto`}>
                                 {!isReplaying && (
                                     <>
                                         <div className={`text-2xl md:text-3xl font-black mb-1 ${winner === 'p1' ? 'text-rose-600' : 'text-sky-600'}`}>{winner === 'p1' ? '红方胜' : '蓝方胜'}</div>
@@ -811,7 +807,6 @@ export default function App() {
                                 )}
                                 
                                 {isReplaying ? (
-                                    // 核心修改：使用声纹可视化组件替换原来的 Loading 文本
                                     <AudioVisualizer 
                                         analyser={replayAnalyserRef.current} 
                                         color={winner === 'p1' ? '#f43f5e' : (winner === 'p2' ? '#0ea5e9' : '#fbbf24')} 
