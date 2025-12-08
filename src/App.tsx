@@ -523,22 +523,34 @@ export default function App() {
                 }}
             >
                 <div className={`flex flex-col items-center justify-center w-full h-full p-4 ${rotationClass}`}>
-                    <div className={`transform transition-all duration-300 ${isWinner ? 'scale-125 -translate-y-4' : ''}`}>
+                    {/* Main Icon Area */}
+                    <div className={`relative transform transition-all duration-300 ${isWinner ? 'scale-125' : ''}`}>
+                        
+                        {/* Shockwave (Behind/Overlay) */}
+                        {showShockwave && (
+                            <>
+                                <div className="absolute inset-0 rounded-full bg-white opacity-80 animate-ping" style={{ animationDuration: '0.6s' }}></div>
+                                <div className="absolute -inset-12 rounded-full border-4 border-white opacity-60 animate-ping" style={{ animationDuration: '1s' }}></div>
+                                <div className="absolute -inset-20 flex items-center justify-center z-20">
+                                    <Zap size={120} className="text-yellow-300 drop-shadow-lg animate-pulse" fill="currentColor"/>
+                                </div>
+                            </>
+                        )}
+
+                        {/* Victory Trophy - Directly above icon */}
+                        {isWinner && (
+                            <div className="absolute -top-24 left-1/2 -translate-x-1/2 animate-bounce z-30 drop-shadow-xl">
+                                <Trophy size={64} className="text-yellow-300 fill-current stroke-orange-500 stroke-2" />
+                            </div>
+                        )}
+
+                        {/* Main Icon */}
                         {isLoser && winReason === 'FALSE_START' ? (
                              <div className="flex flex-col items-center text-red-500/80 font-bold animate-pulse">
                                 <AlertTriangle size={80} /> <span className="text-2xl mt-2">抢跑!</span>
                             </div>
                         ) : (
-                            <div className="relative">
-                                {showShockwave && (
-                                    <>
-                                        <div className="absolute inset-0 rounded-full bg-white opacity-80 animate-ping" style={{ animationDuration: '0.6s' }}></div>
-                                        <div className="absolute -inset-12 rounded-full border-4 border-white opacity-60 animate-ping" style={{ animationDuration: '1s' }}></div>
-                                        <div className="absolute -inset-20 flex items-center justify-center z-20">
-                                            <Zap size={120} className="text-yellow-300 drop-shadow-lg animate-pulse" fill="currentColor"/>
-                                        </div>
-                                    </>
-                                )}
+                            <div className="relative z-10">
                                 {gameMode === 'VOICE' ? (
                                     <Mic size={isWinner ? 140 : 100} className={`${isWinner ? 'text-white' : 'text-gray-800/20'} transition-colors duration-300`} />
                                 ) : (
@@ -547,14 +559,18 @@ export default function App() {
                             </div>
                         )}
                     </div>
+
+                    {/* Text Area */}
                     <div className={`mt-6 text-center z-10 ${isWinner ? 'text-white' : 'text-gray-600/60'}`}>
                         <h2 className="text-3xl font-black tracking-wider">{label}</h2>
+                        
+                        {showShockwave && <div className="text-lg font-black text-yellow-300 bg-black/20 px-3 py-1 rounded mt-1 animate-bounce">SOUND DETECTED!</div>}
+                        
                         {gameMode === 'VOICE' && subLabel && !showShockwave && (
                             <p className={`text-sm font-bold mt-1 ${isWinner ? 'text-white/90' : 'text-gray-500'}`}>{subLabel}</p>
                         )}
                         <p className="text-sm font-medium mt-1 opacity-70 hidden md:block">{gameMode === 'VOICE' ? '喊出声音!' : keyLabel}</p>
                     </div>
-                    {isWinner && <div className="absolute animate-bounce mt-32"><Trophy size={48} className="text-yellow-300 drop-shadow-md" fill="currentColor" /></div>}
                 </div>
             </div>
         );
@@ -663,10 +679,11 @@ export default function App() {
                 <div className="absolute inset-0 pointer-events-none z-10 flex md:flex-row flex-col"><div className="md:w-1/2 w-full h-1/2 md:h-full border-b md:border-b-0 md:border-r border-gray-200/50"></div></div>
                 <PlayerZone id="p2" label="P2 蓝方" subLabel="低音区" keyLabel="键盘 'L'" colorClass="bg-sky-50" />
                 
-                {gameState === 'ENDED' && !isReplaying && gameHistory.length > 0 && !isSavingAudio && (
+                {/* 仅在声音模式下显示回放按钮 */}
+                {gameState === 'ENDED' && !isReplaying && gameHistory.length > 0 && !isSavingAudio && gameMode === 'VOICE' && (
                      <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-30 pointer-events-auto">
-                        <button onClick={startReplay} className={`flex items-center gap-2 px-5 py-2 backdrop-blur border text-white rounded-full text-sm font-bold shadow-lg active:scale-95 transition-all ${gameMode === 'VOICE' ? 'bg-rose-500/90 border-rose-400 hover:bg-rose-600' : 'bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                            {gameMode === 'VOICE' ? <Volume2 size={16} /> : <RotateCcw size={14} />} {gameMode === 'VOICE' ? '高光时刻' : '看回放'}
+                        <button onClick={startReplay} className="flex items-center gap-2 px-5 py-2 backdrop-blur border text-white rounded-full text-sm font-bold shadow-lg active:scale-95 transition-all bg-rose-500/90 border-rose-400 hover:bg-rose-600">
+                            <Volume2 size={16} /> 听高光回放
                         </button>
                      </div>
                 )}
