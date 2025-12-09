@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, User, Activity, RefreshCw, BarChart3, Loader2, Music, Zap } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, User, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Globe, Monitor } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
@@ -87,7 +87,7 @@ const Confetti = () => {
     return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-50" />;
 };
 
-// --- 声纹可视化组件 (修复版：独立的白色卡片) ---
+// --- 声纹可视化组件 ---
 const AudioVisualizer = ({ analyser, color = '#fbbf24' }: { analyser: AnalyserNode | null, color?: string }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -151,7 +151,6 @@ const AudioVisualizer = ({ analyser, color = '#fbbf24' }: { analyser: AnalyserNo
     }, [analyser, color]);
 
     return (
-        // 恢复了白色卡片背景 (画圈部分)，且增加了阴影，让它看起来是悬浮的
         <div className="flex flex-col items-center justify-center bg-white px-8 py-6 rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.15)] animate-in fade-in zoom-in duration-300 z-50">
             <div className="text-xs font-bold text-gray-400 mb-4 tracking-[0.2em] uppercase flex items-center gap-2">
                  <Activity size={14} className="text-gray-300"/> VOICE REPLAY
@@ -409,6 +408,20 @@ export default function App() {
 
     // --- 游戏流程控制 ---
 
+    // 切换模式处理
+    const switchGameMode = (newMode: GameMode) => {
+        // 每次切换模式都彻底重置游戏状态
+        fullAudioCleanup();
+        setGameState('IDLE');
+        setWinner(null);
+        setWinReason(null);
+        setReplayShockwave(null);
+        setIsReplaying(false);
+        setIsSavingAudio(false);
+        setGameHistory([]); // 清空历史
+        setGameMode(newMode);
+    };
+
     const startGame = async () => {
         fullAudioCleanup();
         setIsSavingAudio(false); 
@@ -419,7 +432,7 @@ export default function App() {
         if (gameMode === 'VOICE') {
             if (!isMicInitialized) {
                 const success = await initAudioEngine();
-                if (!success) { setGameMode('TOUCH'); return; } 
+                if (!success) { switchGameMode('TOUCH'); return; } 
             }
             
             startMonitoringLoop();
@@ -594,7 +607,6 @@ export default function App() {
         const t2 = setTimeout(() => {
             setIsReplaying(false);
             setReplayShockwave(null);
-            // 停止 Analyser 绘制
             replayAnalyserRef.current = null;
             if (replaySourceRef.current) {
                 try { replaySourceRef.current.stop(); } catch(e){}
@@ -616,10 +628,9 @@ export default function App() {
             const gainNode = ctx.createGain();
             gainNode.gain.value = 8.0; 
 
-            // --- 核心：连接到分析器用于可视化 ---
             const analyser = ctx.createAnalyser();
-            analyser.fftSize = 64; // 较小的FFT尺寸，条带更宽
-            replayAnalyserRef.current = analyser; // 保存引用以供组件使用
+            analyser.fftSize = 64; 
+            replayAnalyserRef.current = analyser; 
 
             source.connect(analyser);
             analyser.connect(gainNode);
@@ -713,43 +724,70 @@ export default function App() {
             {/* 撒礼花特效 (回放时隐藏) */}
             {gameState === 'ENDED' && !isReplaying && winner && winReason !== 'FALSE_START' && <Confetti />}
 
-            <div className="h-14 bg-white/80 backdrop-blur shadow-sm flex items-center justify-between px-4 z-30 shrink-0 absolute top-0 left-0 right-0 w-full pointer-events-none">
-                <div className="font-bold text-gray-400 text-sm flex items-center gap-1 pointer-events-auto">
-                     {gameMode === 'VOICE' ? <Mic size={16}/> : <Hand size={16}/>}
-                     <span className="hidden sm:inline">{gameMode === 'VOICE' ? '声控对决' : '举手对决'}</span>
-                </div>
-                <div className="flex gap-2 pointer-events-auto">
-                     <button onClick={() => setSoundEnabled(!soundEnabled)} className="p-2 text-gray-400 hover:text-gray-600 rounded-full">
-                        {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+            {/* --- 顶部导航栏 (新设计) --- */}
+            <div className="h-16 bg-white/90 backdrop-blur shadow-sm flex items-center justify-between px-4 z-40 shrink-0 absolute top-0 left-0 right-0 w-full">
+                
+                {/* 左侧：Logo 和 外链 */}
+                <a href="https://bornforthis.cn/" target="_blank" rel="noreferrer" className="flex items-center gap-2 group hover:opacity-80 transition-opacity">
+                    <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg group-hover:bg-indigo-100 transition-colors">
+                        <Globe size={20} />
+                    </div>
+                    <span className="font-bold text-gray-700 hidden md:block">AI悦创编程私教</span>
+                    <span className="font-bold text-gray-700 md:hidden">AI悦创</span>
+                </a>
+
+                {/* 右侧：功能区 */}
+                <div className="flex items-center gap-3">
+                    
+                    {/* 模式切换胶囊 */}
+                    <button 
+                        onClick={() => switchGameMode(gameMode === 'TOUCH' ? 'VOICE' : 'TOUCH')}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full transition-all active:scale-95"
+                        title="切换游戏模式"
+                    >
+                        {gameMode === 'TOUCH' ? <Hand size={16} className="text-indigo-500"/> : <Mic size={16} className="text-rose-500"/>}
+                        <span className="text-xs font-bold hidden sm:inline">{gameMode === 'TOUCH' ? '触摸模式' : '声控模式'}</span>
+                        <RefreshCw size={12} className="opacity-40" />
                     </button>
+
+                    {/* 音效开关 */}
+                    <button 
+                        onClick={() => setSoundEnabled(!soundEnabled)} 
+                        className={`p-2 rounded-full transition-colors ${soundEnabled ? 'text-gray-600 hover:bg-gray-100' : 'text-gray-400 bg-gray-50'}`}
+                    >
+                        {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
+                    </button>
+
+                    {/* 重开按钮 (仅结束时显示) */}
                     {gameState === 'ENDED' && !isReplaying && (
-                        <button onClick={startGame} className={`p-2 rounded-full shadow-sm transition-all text-white ${isSavingAudio ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 active:bg-indigo-700'}`} disabled={isSavingAudio}>
-                            {isSavingAudio ? <Loader2 size={18} className="animate-spin" /> : <RotateCcw size={18} />}
+                        <button 
+                            onClick={startGame} 
+                            className={`p-2 rounded-full shadow-lg text-white transition-all active:scale-90 ${isSavingAudio ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`} 
+                            disabled={isSavingAudio}
+                        >
+                            {isSavingAudio ? <Loader2 size={20} className="animate-spin" /> : <RotateCcw size={20} />}
                         </button>
                     )}
                 </div>
             </div>
 
+            {/* IDLE 状态引导页 (仅显示标题和开始按钮，模式切换已移至顶部) */}
             {gameState === 'IDLE' && !isReplaying && (
-                <div className="absolute inset-0 z-40 bg-white/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-fade-in">
-                    <div className="flex bg-gray-100 p-1 rounded-xl mb-6">
-                        <button onClick={() => setGameMode('TOUCH')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${gameMode === 'TOUCH' ? 'bg-white shadow-sm text-indigo-600' : 'text-gray-400'}`}>
-                            <Hand size={16} /> 触摸模式
-                        </button>
-                        <button onClick={() => setGameMode('VOICE')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${gameMode === 'VOICE' ? 'bg-white shadow-sm text-rose-500' : 'text-gray-400'}`}>
-                            <Mic size={16} /> 声音模式
-                        </button>
-                    </div>
-
-                    <div className="mb-6">
-                        <h1 className="text-3xl font-black text-gray-800 mb-2">{gameMode === 'VOICE' ? '谁先发声谁赢' : '双人反应对决'}</h1>
-                        <p className="text-gray-500 max-w-xs mx-auto text-sm">
-                            {gameMode === 'VOICE' ? '看到 GO 信号时，立即喊出声音。' : '看到 GO 信号时，立即点击屏幕。'}
+                <div className="absolute inset-0 z-30 bg-white/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-fade-in">
+                    <div className="mb-8">
+                        <h1 className="text-4xl font-black text-gray-800 mb-4 tracking-tight">
+                            {gameMode === 'VOICE' ? '谁先发声谁赢' : '双人反应对决'}
+                        </h1>
+                        <p className="text-gray-500 max-w-xs mx-auto text-base leading-relaxed">
+                            {gameMode === 'VOICE' 
+                                ? <>看到 <strong className="text-rose-500">GO</strong> 信号时，立即喊出声音。<br/><span className="text-xs text-gray-400 mt-2 block">(请确保授予麦克风权限)</span></>
+                                : <>看到 <strong className="text-indigo-500">GO</strong> 信号时，立即点击屏幕。</>
+                            }
                         </p>
                     </div>
 
                     {gameMode === 'VOICE' && (
-                        <div className="mb-8 w-full max-w-xs bg-gray-50 p-4 rounded-xl border border-gray-200">
+                        <div className="mb-10 w-full max-w-xs bg-gray-50 p-4 rounded-2xl border border-gray-200 shadow-sm">
                             <div className="flex justify-between items-center mb-2 text-xs font-bold text-gray-500">
                                 <span className="flex items-center gap-1"><BarChart3 size={12}/> 麦克风预检</span>
                                 <span className={isMicInitialized ? "text-green-500" : "text-gray-400"}>{isMicInitialized ? "工作中" : "未启动"}</span>
@@ -758,21 +796,25 @@ export default function App() {
                                 <div className="absolute left-0 top-0 bottom-0 bg-green-500 transition-all duration-75" style={{ width: `${Math.min(currentVolume * 100, 100)}%` }}></div>
                                 <div className="absolute top-0 bottom-0 w-0.5 bg-red-400 left-[2%] z-10"></div> 
                             </div>
-                            <div className="mt-3 flex gap-2">
+                            <div className="mt-4 flex gap-2">
                                 {!isMicInitialized ? (
-                                    <button onClick={initAudioEngine} className="flex-1 py-2 bg-gray-800 text-white text-xs font-bold rounded hover:bg-black transition-colors">启动麦克风</button>
+                                    <button onClick={initAudioEngine} className="flex-1 py-2.5 bg-gray-900 text-white text-xs font-bold rounded-lg hover:bg-black transition-colors shadow-lg shadow-gray-200">启动麦克风</button>
                                 ) : (
                                     <>
-                                        <button onClick={() => initAudioEngine()} className="flex-1 py-2 bg-white border border-gray-300 text-gray-600 text-xs font-bold rounded hover:bg-gray-50 flex items-center justify-center gap-1"><RefreshCw size={10}/> 重置</button>
-                                        <button onClick={() => safePlaySound('test', 'VOICE')} className="flex-1 py-2 bg-white border border-gray-300 text-gray-600 text-xs font-bold rounded hover:bg-gray-50 flex items-center justify-center gap-1"><Music size={10}/> 试听</button>
+                                        <button onClick={() => initAudioEngine()} className="flex-1 py-2 bg-white border border-gray-200 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-50 flex items-center justify-center gap-1"><RefreshCw size={10}/> 重置</button>
+                                        <button onClick={() => safePlaySound('test', 'VOICE')} className="flex-1 py-2 bg-white border border-gray-200 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-50 flex items-center justify-center gap-1"><Music size={10}/> 试听</button>
                                     </>
                                 )}
                             </div>
                         </div>
                     )}
 
-                    <button onClick={startGame} className={`w-full max-w-xs py-4 text-white text-lg font-bold rounded-xl shadow-xl transition-all flex items-center justify-center gap-2 active:scale-95 ${gameMode === 'VOICE' ? 'bg-rose-500 hover:bg-rose-600 shadow-rose-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'}`}>
-                        <Play size={24} fill="currentColor" /> 立即开始
+                    <button 
+                        onClick={startGame} 
+                        className={`w-full max-w-xs py-4 text-white text-xl font-black rounded-2xl shadow-xl shadow-indigo-100 transition-all active:scale-95 flex items-center justify-center gap-3
+                            ${gameMode === 'VOICE' ? 'bg-gradient-to-r from-rose-500 to-pink-600' : 'bg-gradient-to-r from-indigo-600 to-violet-600'}`}
+                    >
+                        <Play size={28} fill="currentColor" /> 立即开始
                     </button>
                 </div>
             )}
