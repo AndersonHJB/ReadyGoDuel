@@ -916,7 +916,7 @@ export default function App() {
                                         {winReason === 'FALSE_START' && <div className="text-red-500 font-bold text-sm">对方抢跑犯规</div>}
 
                                         {/* 揭晓彩头区域 */}
-                                        {((winner === 'p1' && p1Reward) || (winner === 'p2' && p2Reward)) && winReason !== 'FALSE_START' && (
+                                        {((winner === 'p1' && p1Reward) || (winner === 'p2' && p2Reward)) && (gameMode === 'TOUCH' || winReason !== 'FALSE_START') && (
                                             <div 
                                                 onClick={() => setIsRewardRevealed(true)}
                                                 className={`mt-4 w-full max-w-[200px] cursor-pointer transition-all duration-500 preserve-3d group perspective-1000 ${isRewardRevealed ? '' : 'hover:scale-105'}`}
