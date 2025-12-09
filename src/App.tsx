@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Globe, Gift, Lock, Unlock, Sparkles } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Globe, Gift, Lock, Unlock, Sparkles, Dices } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
@@ -20,6 +20,14 @@ interface GameLog {
     triggerTimestamp?: number; 
     signalTimestamp?: number; 
 }
+
+// --- 常量：随机彩头库 ---
+const RANDOM_REWARDS = [
+    "请喝一杯大杯奶茶", "洗一周的碗", "负责取一周外卖", "请吃一顿大餐", "发 50 元红包",
+    "按摩肩膀 10 分钟", "唱一首情歌", "跑腿去买零食", "无条件答应一个要求", "包办一周家务",
+    "夸奖对方 5 分钟", "换个搞笑头像一天", "朋友圈发丑照一张", "请看一场电影", "倒洗脚水一次",
+    "学猫叫三声", "负责剥虾", "买一个对方喜欢的皮肤", "承包周末做饭", "听从指挥一小时"
+];
 
 // --- 自定义 Logo SVG 组件 ---
 const CustomLogo = ({ className }: { className?: string }) => (
@@ -464,6 +472,23 @@ export default function App() {
         setShowRewardInput(true);
     };
 
+    // 随机生成彩头
+    const handleRandomReward = (player: 'p1' | 'p2') => {
+        const randomReward = RANDOM_REWARDS[Math.floor(Math.random() * RANDOM_REWARDS.length)];
+        if (player === 'p1') {
+            setP1Reward(randomReward);
+        } else {
+            setP2Reward(randomReward);
+        }
+    };
+
+    // 处理输入框回车
+    const handleInputKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            launchGame();
+        }
+    };
+
     // 真正的开始游戏逻辑（在弹窗确认后调用）
     const launchGame = async () => {
         setShowRewardInput(false); // 关闭弹窗
@@ -830,23 +855,43 @@ export default function App() {
                         <div className="space-y-4 mb-6">
                             <div className="space-y-1">
                                 <label className="text-xs font-bold text-rose-500 uppercase tracking-wider ml-1">P1 红方赢了想要...</label>
-                                <input 
-                                    type="text" 
-                                    value={p1Reward}
-                                    onChange={(e) => setP1Reward(e.target.value)}
-                                    placeholder="例: 免洗碗券一张" 
-                                    className="w-full px-4 py-3 bg-rose-50 border-2 border-rose-100 rounded-xl focus:outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-100 transition-all text-gray-700 font-medium placeholder:text-rose-300/70"
-                                />
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        value={p1Reward}
+                                        onChange={(e) => setP1Reward(e.target.value)}
+                                        onKeyDown={handleInputKeyDown}
+                                        placeholder="例: 免洗碗券一张" 
+                                        className="flex-1 px-4 py-3 bg-rose-50 border-2 border-rose-100 rounded-xl focus:outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-100 transition-all text-gray-700 font-medium placeholder:text-rose-300/70"
+                                    />
+                                    <button 
+                                        onClick={() => handleRandomReward('p1')}
+                                        className="px-3 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded-xl transition-colors flex items-center justify-center border-2 border-rose-200"
+                                        title="随机彩头"
+                                    >
+                                        <Dices size={20} />
+                                    </button>
+                                </div>
                             </div>
                             <div className="space-y-1">
                                 <label className="text-xs font-bold text-sky-500 uppercase tracking-wider ml-1">P2 蓝方赢了想要...</label>
-                                <input 
-                                    type="text" 
-                                    value={p2Reward}
-                                    onChange={(e) => setP2Reward(e.target.value)}
-                                    placeholder="例: 请喝大杯奶茶" 
-                                    className="w-full px-4 py-3 bg-sky-50 border-2 border-sky-100 rounded-xl focus:outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100 transition-all text-gray-700 font-medium placeholder:text-sky-300/70"
-                                />
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        value={p2Reward}
+                                        onChange={(e) => setP2Reward(e.target.value)}
+                                        onKeyDown={handleInputKeyDown}
+                                        placeholder="例: 请喝大杯奶茶" 
+                                        className="flex-1 px-4 py-3 bg-sky-50 border-2 border-sky-100 rounded-xl focus:outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100 transition-all text-gray-700 font-medium placeholder:text-sky-300/70"
+                                    />
+                                    <button 
+                                        onClick={() => handleRandomReward('p2')}
+                                        className="px-3 bg-sky-100 hover:bg-sky-200 text-sky-600 rounded-xl transition-colors flex items-center justify-center border-2 border-sky-200"
+                                        title="随机彩头"
+                                    >
+                                        <Dices size={20} />
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
