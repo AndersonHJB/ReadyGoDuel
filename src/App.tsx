@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, User, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Globe, Monitor } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Globe, Gift, Lock, Unlock, Sparkles } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
@@ -266,6 +266,12 @@ export default function App() {
     const [detectedFreq, setDetectedFreq] = useState<number>(0); 
     const [currentVolume, setCurrentVolume] = useState<number>(0); 
     
+    // 彩头相关状态
+    const [p1Reward, setP1Reward] = useState('');
+    const [p2Reward, setP2Reward] = useState('');
+    const [showRewardInput, setShowRewardInput] = useState(false);
+    const [isRewardRevealed, setIsRewardRevealed] = useState(false);
+
     // Debug & 状态标识
     const [isMicInitialized, setIsMicInitialized] = useState(false);
     const [isSavingAudio, setIsSavingAudio] = useState(false);
@@ -420,9 +426,20 @@ export default function App() {
         setIsSavingAudio(false);
         setGameHistory([]); // 清空历史
         setGameMode(newMode);
+        // 不清除彩头，方便切换模式后继续用
+        setIsRewardRevealed(false);
     };
 
-    const startGame = async () => {
+    // 点击开始按钮 -> 打开彩头输入弹窗
+    const handleStartClick = () => {
+        setShowRewardInput(true);
+    };
+
+    // 真正的开始游戏逻辑（在弹窗确认后调用）
+    const launchGame = async () => {
+        setShowRewardInput(false); // 关闭弹窗
+        setIsRewardRevealed(false); // 重置揭晓状态
+        
         fullAudioCleanup();
         setIsSavingAudio(false); 
         setReplayShockwave(null);
@@ -647,14 +664,17 @@ export default function App() {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.repeat) return;
+            // 如果彩头输入框打开，禁止空格开始游戏，避免误触
+            if (showRewardInput) return;
+            
             if (gameMode === 'VOICE' && gameState !== 'IDLE') return; 
             if (e.key.toLowerCase() === 'a') handleTouchAction('p1');
             if (e.key.toLowerCase() === 'l') handleTouchAction('p2');
-            if (e.code === 'Space' && gameState === 'IDLE' && !isReplaying) startGame();
+            if (e.code === 'Space' && gameState === 'IDLE' && !isReplaying) handleStartClick();
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [gameState, isReplaying, gameMode]);
+    }, [gameState, isReplaying, gameMode, showRewardInput]);
 
     // --- UI 组件 ---
     const PlayerZone = ({ id, label, colorClass, keyLabel, subLabel }: { id: 'p1' | 'p2', label: string, colorClass: string, keyLabel: string, subLabel?: string }) => {
@@ -761,7 +781,7 @@ export default function App() {
                     {/* 重开按钮 (仅结束时显示) */}
                     {gameState === 'ENDED' && !isReplaying && (
                         <button 
-                            onClick={startGame} 
+                            onClick={handleStartClick} 
                             className={`p-2 rounded-full shadow-lg text-white transition-all active:scale-90 ${isSavingAudio ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`} 
                             disabled={isSavingAudio}
                         >
@@ -771,8 +791,50 @@ export default function App() {
                 </div>
             </div>
 
+            {/* 彩头输入弹窗 */}
+            {showRewardInput && (
+                <div className="absolute inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-md scale-100 animate-in zoom-in-95 duration-200">
+                        <div className="flex items-center justify-center gap-2 mb-6 text-gray-800">
+                            <Gift className="text-indigo-500" />
+                            <h2 className="text-xl font-black tracking-tight">本局彩头</h2>
+                        </div>
+                        
+                        <div className="space-y-4 mb-6">
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-rose-500 uppercase tracking-wider ml-1">P1 红方赢了想要...</label>
+                                <input 
+                                    type="text" 
+                                    value={p1Reward}
+                                    onChange={(e) => setP1Reward(e.target.value)}
+                                    placeholder="例: 免洗碗券一张" 
+                                    className="w-full px-4 py-3 bg-rose-50 border-2 border-rose-100 rounded-xl focus:outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-100 transition-all text-gray-700 font-medium placeholder:text-rose-300/70"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold text-sky-500 uppercase tracking-wider ml-1">P2 蓝方赢了想要...</label>
+                                <input 
+                                    type="text" 
+                                    value={p2Reward}
+                                    onChange={(e) => setP2Reward(e.target.value)}
+                                    placeholder="例: 请喝大杯奶茶" 
+                                    className="w-full px-4 py-3 bg-sky-50 border-2 border-sky-100 rounded-xl focus:outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100 transition-all text-gray-700 font-medium placeholder:text-sky-300/70"
+                                />
+                            </div>
+                        </div>
+
+                        <button 
+                            onClick={launchGame}
+                            className="w-full py-4 bg-gray-900 hover:bg-black text-white rounded-2xl font-bold text-lg shadow-xl shadow-gray-200 transition-all active:scale-95 flex items-center justify-center gap-2"
+                        >
+                            {(!p1Reward && !p2Reward) ? '跳过并开始' : '确认并开始'} <Play size={18} fill="currentColor"/>
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* IDLE 状态引导页 (仅显示标题和开始按钮，模式切换已移至顶部) */}
-            {gameState === 'IDLE' && !isReplaying && (
+            {gameState === 'IDLE' && !isReplaying && !showRewardInput && (
                 <div className="absolute inset-0 z-30 bg-white/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-fade-in">
                     <div className="mb-8">
                         <h1 className="text-4xl font-black text-gray-800 mb-4 tracking-tight">
@@ -810,7 +872,7 @@ export default function App() {
                     )}
 
                     <button 
-                        onClick={startGame} 
+                        onClick={handleStartClick} 
                         className={`w-full max-w-xs py-4 text-white text-xl font-black rounded-2xl shadow-xl shadow-indigo-100 transition-all active:scale-95 flex items-center justify-center gap-3
                             ${gameMode === 'VOICE' ? 'bg-gradient-to-r from-rose-500 to-pink-600' : 'bg-gradient-to-r from-indigo-600 to-violet-600'}`}
                     >
@@ -822,6 +884,13 @@ export default function App() {
             <div className="flex-1 flex flex-col md:flex-row relative">
                 {gameState !== 'IDLE' && (
                     <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40 pointer-events-none flex flex-col items-center justify-center">
+                        {/* 游戏中显示彩头锁定图标 */}
+                        {(gameState === 'WAITING' || gameState === 'GO') && (p1Reward || p2Reward) && (
+                            <div className="absolute -top-16 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm flex items-center gap-2 text-xs font-bold text-gray-500 animate-fade-in border border-gray-100">
+                                <Lock size={12} className="text-gray-400" /> 彩头已锁定
+                            </div>
+                        )}
+
                         {gameState === 'WAITING' && (
                             <div className="bg-white p-2 rounded-full shadow-lg border-4 border-gray-100 relative">
                                 {gameMode === 'VOICE' && <div className="absolute inset-0 rounded-full bg-rose-400 opacity-30 transition-transform duration-75 ease-out" style={{ transform: `scale(${1 + currentVolume})` }}></div>}
@@ -845,6 +914,34 @@ export default function App() {
                                         {winReason === 'REACTION' && <div className="text-xl font-mono font-bold text-gray-700 bg-gray-100 px-3 py-1 rounded-lg">{reactionTime} ms</div>}
                                         {detectedFreq > 0 && gameMode === 'VOICE' && <div className="text-xs text-gray-400 mt-1">检测频率: {detectedFreq}Hz</div>}
                                         {winReason === 'FALSE_START' && <div className="text-red-500 font-bold text-sm">对方抢跑犯规</div>}
+
+                                        {/* 揭晓彩头区域 */}
+                                        {((winner === 'p1' && p1Reward) || (winner === 'p2' && p2Reward)) && winReason !== 'FALSE_START' && (
+                                            <div 
+                                                onClick={() => setIsRewardRevealed(true)}
+                                                className={`mt-4 w-full max-w-[200px] cursor-pointer transition-all duration-500 preserve-3d group perspective-1000 ${isRewardRevealed ? '' : 'hover:scale-105'}`}
+                                            >
+                                                {!isRewardRevealed ? (
+                                                    <div className="bg-gradient-to-r from-yellow-400 to-orange-400 p-0.5 rounded-xl shadow-lg">
+                                                        <div className="bg-white rounded-[10px] py-2 px-3 flex items-center justify-center gap-2">
+                                                            <div className="bg-yellow-100 p-1.5 rounded-full text-yellow-600">
+                                                                <Lock size={14} />
+                                                            </div>
+                                                            <span className="text-sm font-bold text-gray-600">点击揭晓彩头</span>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl py-3 px-4 text-center animate-in zoom-in duration-300">
+                                                        <div className="text-[10px] font-bold text-yellow-600 uppercase tracking-widest mb-1 flex items-center justify-center gap-1">
+                                                            <Sparkles size={10}/> 赢家奖励 <Sparkles size={10}/>
+                                                        </div>
+                                                        <div className="text-lg font-black text-gray-800 break-words leading-tight">
+                                                            {winner === 'p1' ? p1Reward : p2Reward}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </>
                                 )}
                                 
@@ -854,7 +951,7 @@ export default function App() {
                                         color={winner === 'p1' ? '#f43f5e' : (winner === 'p2' ? '#0ea5e9' : '#fbbf24')} 
                                     />
                                 ) : (
-                                    gameMode === 'VOICE' && lastRecordingSize > 0 && <div className="mt-1 text-[10px] text-gray-400 border border-gray-200 rounded px-1">录音: {(lastRecordingSize/1024).toFixed(1)} KB</div>
+                                    gameMode === 'VOICE' && lastRecordingSize > 0 && <div className="mt-3 text-[10px] text-gray-400 border border-gray-200 rounded px-1">录音: {(lastRecordingSize/1024).toFixed(1)} KB</div>
                                 )}
                             </div>
                         )}
