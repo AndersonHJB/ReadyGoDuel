@@ -29,6 +29,9 @@ const RANDOM_REWARDS = [
     "学猫叫三声", "负责剥虾", "买一个对方喜欢的皮肤", "承包周末做饭", "听从指挥一小时"
 ];
 
+// --- 全局共享音频上下文 (iOS 修复关键) ---
+let sharedAudioCtx: AudioContext | null = null;
+
 // --- 自定义 Logo SVG 组件 ---
 const CustomLogo = ({ className }: { className?: string }) => (
     <svg 
@@ -197,13 +200,27 @@ const AudioVisualizer = ({ analyser, color = '#fbbf24' }: { analyser: AnalyserNo
     );
 };
 
-// --- 工具函数：安全播放音频 ---
+// --- 工具函数：安全播放音频 (iOS 优化版) ---
 const safePlaySound = (type: 'start' | 'go' | 'false' | 'win' | 'test', mode: GameMode) => {
-    if (mode === 'VOICE' && type === 'go') return; 
-    try {
+    if (mode === 'VOICE' && type === 'go') return;
+    
+    // 懒加载全局音频上下文
+    if (!sharedAudioCtx) {
         const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-        if (!AudioContextClass) return;
-        const ctx = new AudioContextClass();
+        if (AudioContextClass) {
+            sharedAudioCtx = new AudioContextClass();
+        }
+    }
+
+    if (!sharedAudioCtx) return;
+
+    // 尝试恢复（虽然主要依赖用户点击时的恢复，但这里也尝试一下）
+    if (sharedAudioCtx.state === 'suspended') {
+        sharedAudioCtx.resume().catch(() => {});
+    }
+
+    try {
+        const ctx = sharedAudioCtx;
         const oscillator = ctx.createOscillator();
         const gainNode = ctx.createGain();
         oscillator.connect(gainNode);
@@ -349,6 +366,32 @@ export default function App() {
     // 同步状态到 Refs
     useEffect(() => { stateRef.current = gameState; }, [gameState]);
     useEffect(() => { isReplayingRef.current = isReplaying; }, [isReplaying]); 
+
+    // iOS 音频解锁监听
+    useEffect(() => {
+        const unlockAudio = () => {
+            // 初始化上下文
+            if (!sharedAudioCtx) {
+                const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+                if (AudioContextClass) sharedAudioCtx = new AudioContextClass();
+            }
+            // 恢复上下文
+            if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
+                sharedAudioCtx.resume();
+            }
+        };
+
+        // 监听多种用户交互事件以确保解锁
+        window.addEventListener('touchstart', unlockAudio, { passive: true });
+        window.addEventListener('click', unlockAudio, { passive: true });
+        window.addEventListener('keydown', unlockAudio, { passive: true });
+
+        return () => {
+            window.removeEventListener('touchstart', unlockAudio);
+            window.removeEventListener('click', unlockAudio);
+            window.removeEventListener('keydown', unlockAudio);
+        };
+    }, []);
 
     // 组件卸载清理
     useEffect(() => {

@@ -1,9 +1,9 @@
 #! /usr/bin/env sh
-git pull
-git status
-git add .
-git commit . -m "update"
-git push -u origin main
+# git pull
+# git status
+# git add .
+# git commit . -m "update"
+# git push -u origin main
 npm run build
 
 set -e
