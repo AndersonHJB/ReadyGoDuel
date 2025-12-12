@@ -727,12 +727,12 @@ export default function App() {
             if (e.code === 'Space' && gameState === 'IDLE' && !isReplaying) handleStartClick();
         };
         
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+        window.addEventListener('keydown', handleKeyDown as any);
+        return () => window.removeEventListener('keydown', handleKeyDown as any);
     }, [gameState, isReplaying, gameMode, showRewardInput, launchGame]);
 
     // --- UI 组件 ---
-    const PlayerZone = ({ id, label, colorClass, keyLabel, subLabel }: { id: 'p1' | 'p2', label: string, colorClass: string, keyLabel: string, subLabel?: string }) => {
+    const PlayerZone = ({ id, label, colorClass, keyLabel, subLabel, hasReward }: { id: 'p1' | 'p2', label: string, colorClass: string, keyLabel: string, subLabel?: string, hasReward?: boolean }) => {
         const isWinner = gameState === 'ENDED' && winner === id;
         const isLoser = gameState === 'ENDED' && winner !== id && winner !== null;
         let bgColor = colorClass;
@@ -783,7 +783,15 @@ export default function App() {
                         )}
                     </div>
                     <div className={`mt-6 text-center z-10 ${isWinner ? 'text-white' : 'text-gray-600/60'}`}>
-                        <h2 className="text-3xl font-black tracking-wider">{label}</h2>
+                        <div className="flex items-center justify-center gap-3">
+                            <h2 className="text-3xl font-black tracking-wider">{label}</h2>
+                            {/* 彩头锁定图标：跟随玩家区域旋转 */}
+                            {hasReward && !isWinner && !isLoser && (
+                                <div className="bg-yellow-100 text-yellow-600 p-1.5 rounded-full shadow-sm animate-fade-in" title="彩头已锁定">
+                                    <Lock size={16} />
+                                </div>
+                            )}
+                        </div>
                         {gameMode === 'VOICE' && subLabel && !showShockwave && (
                             <p className={`text-sm font-bold mt-1 ${isWinner ? 'text-white/90' : 'text-gray-500'}`}>{subLabel}</p>
                         )}
@@ -955,12 +963,7 @@ export default function App() {
             <div className="flex-1 flex flex-col md:flex-row relative">
                 {gameState !== 'IDLE' && (
                     <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40 pointer-events-none flex flex-col items-center justify-center">
-                        {/* 游戏中显示彩头锁定图标 */}
-                        {(gameState === 'WAITING' || gameState === 'GO') && (p1Reward || p2Reward) && (
-                            <div className="absolute -top-16 bg-white/90 backdrop-blur px-3 py-1.5 rounded-full shadow-sm flex items-center gap-2 text-xs font-bold text-gray-500 animate-fade-in border border-gray-100">
-                                <Lock size={12} className="text-gray-400" /> 彩头已锁定
-                            </div>
-                        )}
+                        {/* 移除了旧的中央彩头锁定图标 */}
 
                         {gameState === 'WAITING' && (
                             <div className="bg-white p-2 rounded-full shadow-lg border-4 border-gray-100 relative">
@@ -1029,9 +1032,23 @@ export default function App() {
                     </div>
                 )}
 
-                <PlayerZone id="p1" label="P1 红方" subLabel="高音区" keyLabel="键盘 'A'" colorClass="bg-rose-50" />
+                <PlayerZone 
+                    id="p1" 
+                    label="P1 红方" 
+                    subLabel="高音区" 
+                    keyLabel="键盘 'A'" 
+                    colorClass="bg-rose-50" 
+                    hasReward={!!p1Reward} // 传递是否有彩头
+                />
                 <div className="absolute inset-0 pointer-events-none z-10 flex md:flex-row flex-col"><div className="md:w-1/2 w-full h-1/2 md:h-full border-b md:border-b-0 md:border-r border-gray-200/50"></div></div>
-                <PlayerZone id="p2" label="P2 蓝方" subLabel="低音区" keyLabel="键盘 'L'" colorClass="bg-sky-50" />
+                <PlayerZone 
+                    id="p2" 
+                    label="P2 蓝方" 
+                    subLabel="低音区" 
+                    keyLabel="键盘 'L'" 
+                    colorClass="bg-sky-50" 
+                    hasReward={!!p2Reward} // 传递是否有彩头
+                />
                 
                 {gameState === 'ENDED' && !isReplaying && gameHistory.length > 0 && !isSavingAudio && gameMode === 'VOICE' && (
                      <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-30 pointer-events-auto">
