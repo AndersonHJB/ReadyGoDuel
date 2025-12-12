@@ -482,13 +482,6 @@ export default function App() {
         }
     };
 
-    // 处理输入框回车
-    const handleInputKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter') {
-            launchGame();
-        }
-    };
-
     // 真正的开始游戏逻辑（在弹窗确认后调用）
     const launchGame = async () => {
         setShowRewardInput(false); // 关闭弹窗
@@ -718,8 +711,15 @@ export default function App() {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.repeat) return;
-            // 如果彩头输入框打开，禁止空格开始游戏，避免误触
-            if (showRewardInput) return;
+            
+            // 全局彩头弹窗回车支持
+            if (showRewardInput) {
+                // e.isComposing 为 true 时表示用户正在使用中文输入法选词，此时不应触发提交
+                if (e.key === 'Enter' && !e.isComposing) {
+                    launchGame();
+                }
+                return;
+            }
             
             if (gameMode === 'VOICE' && gameState !== 'IDLE') return; 
             if (e.key.toLowerCase() === 'a') handleTouchAction('p1');
@@ -728,7 +728,7 @@ export default function App() {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [gameState, isReplaying, gameMode, showRewardInput]);
+    }, [gameState, isReplaying, gameMode, showRewardInput, launchGame]);
 
     // --- UI 组件 ---
     const PlayerZone = ({ id, label, colorClass, keyLabel, subLabel }: { id: 'p1' | 'p2', label: string, colorClass: string, keyLabel: string, subLabel?: string }) => {
@@ -860,7 +860,6 @@ export default function App() {
                                         type="text" 
                                         value={p1Reward}
                                         onChange={(e) => setP1Reward(e.target.value)}
-                                        onKeyDown={handleInputKeyDown}
                                         placeholder="例: 免洗碗券一张" 
                                         className="flex-1 px-4 py-3 bg-rose-50 border-2 border-rose-100 rounded-xl focus:outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-100 transition-all text-gray-700 font-medium placeholder:text-rose-300/70"
                                     />
@@ -880,7 +879,6 @@ export default function App() {
                                         type="text" 
                                         value={p2Reward}
                                         onChange={(e) => setP2Reward(e.target.value)}
-                                        onKeyDown={handleInputKeyDown}
                                         placeholder="例: 请喝大杯奶茶" 
                                         className="flex-1 px-4 py-3 bg-sky-50 border-2 border-sky-100 rounded-xl focus:outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100 transition-all text-gray-700 font-medium placeholder:text-sky-300/70"
                                     />
