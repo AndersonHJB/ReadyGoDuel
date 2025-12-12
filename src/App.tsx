@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Globe, Gift, Lock, Unlock, Sparkles, Dices } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
@@ -323,7 +323,7 @@ export default function App() {
     const replayAnalyserRef = useRef<AnalyserNode | null>(null);
 
     // --- Refs ---
-    const timerRef = useRef<NodeJS.Timeout | null>(null);
+    const timerRef = useRef<number | null>(null);
     const startTimeRef = useRef<number>(0);
     const signalTimeRef = useRef<number>(0);
     const signalTimestampRef = useRef<number>(0); 
@@ -341,10 +341,10 @@ export default function App() {
     
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
-    const recordingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const recordingTimeoutRef = useRef<number | null>(null);
     const recordingStartTimeRef = useRef<number>(0);
     const replaySourceRef = useRef<AudioBufferSourceNode | null>(null);
-    const replayTimeoutsRef = useRef<NodeJS.Timeout[]>([]); 
+    const replayTimeoutsRef = useRef<number[]>([]); 
 
     // 同步状态到 Refs
     useEffect(() => { stateRef.current = gameState; }, [gameState]);
@@ -561,15 +561,15 @@ export default function App() {
             guessedWinner = pitch > 200 ? 'p1' : 'p2'; 
         }
         
-        finishGame(guessedWinner, 'VOICE_TRIGGER');
+        finishGame(guessedWinner);
     };
 
     const handleTouchAction = (player: 'p1' | 'p2') => {
         if (stateRef.current !== 'WAITING' && stateRef.current !== 'GO') return;
-        finishGame(player, 'TOUCH');
+        finishGame(player);
     };
 
-    const finishGame = (triggerPlayer: Player, triggerType: 'TOUCH' | 'VOICE_TRIGGER') => {
+    const finishGame = (triggerPlayer: Player) => {
         if (timerRef.current) clearTimeout(timerRef.current);
 
         const now = Date.now();
@@ -726,6 +726,7 @@ export default function App() {
             if (e.key.toLowerCase() === 'l') handleTouchAction('p2');
             if (e.code === 'Space' && gameState === 'IDLE' && !isReplaying) handleStartClick();
         };
+        
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [gameState, isReplaying, gameMode, showRewardInput, launchGame]);
