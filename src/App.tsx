@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Unlock, Sparkles, Dices, Eye, KeyRound, X, Check } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
@@ -222,7 +222,7 @@ const safePlaySound = (type: 'start' | 'go' | 'false' | 'win' | 'test', mode: Ga
 
     if (!sharedAudioCtx) return;
 
-    // 尝试恢复（虽然主要依赖用户点击时的恢复，但这里也尝试一下）
+    // 尝试恢复
     if (sharedAudioCtx.state === 'suspended') {
         sharedAudioCtx.resume().catch(() => {});
     }
@@ -331,8 +331,16 @@ export default function App() {
     // 彩头相关状态
     const [p1Reward, setP1Reward] = useState('');
     const [p2Reward, setP2Reward] = useState('');
+    const [p1Masked, setP1Masked] = useState(false);
+    const [p2Masked, setP2Masked] = useState(false);
     const [showRewardInput, setShowRewardInput] = useState(false);
     const [isRewardRevealed, setIsRewardRevealed] = useState(false);
+    
+    // 密码锁状态
+    const [unlockPassword, setUnlockPassword] = useState('123456');
+    const [isSettingPassword, setIsSettingPassword] = useState(false);
+    const [passwordCheckState, setPasswordCheckState] = useState<{ visible: boolean, player: Player, input: string }>({ visible: false, player: null, input: '' });
+    const [viewedRewardContent, setViewedRewardContent] = useState<string | null>(null); // 查看密码成功后显示的内容
 
     // Debug & 状态标识
     const [isMicInitialized, setIsMicInitialized] = useState(false);
@@ -378,22 +386,17 @@ export default function App() {
     // iOS 音频解锁监听
     useEffect(() => {
         const unlockAudio = () => {
-            // 初始化上下文
             if (!sharedAudioCtx) {
                 const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
                 if (AudioContextClass) sharedAudioCtx = new AudioContextClass();
             }
-            // 恢复上下文
             if (sharedAudioCtx && sharedAudioCtx.state === 'suspended') {
                 sharedAudioCtx.resume();
             }
         };
-
-        // 监听多种用户交互事件以确保解锁
         window.addEventListener('touchstart', unlockAudio, { passive: true });
         window.addEventListener('click', unlockAudio, { passive: true });
         window.addEventListener('keydown', unlockAudio, { passive: true });
-
         return () => {
             window.removeEventListener('touchstart', unlockAudio);
             window.removeEventListener('click', unlockAudio);
@@ -487,7 +490,6 @@ export default function App() {
             const displayVol = Math.min(rms * 15, 1.5); 
             setCurrentVolume(displayVol);
 
-            // --- 游戏触发逻辑 ---
             if ((stateRef.current === 'WAITING' || stateRef.current === 'GO') && !isReplayingRef.current) {
                 if (rms > 0.02) { 
                     const pitch = detectPitch(dataArray, audioContextRef.current.sampleRate);
@@ -502,9 +504,7 @@ export default function App() {
 
     // --- 游戏流程控制 ---
 
-    // 切换模式处理
     const switchGameMode = (newMode: GameMode) => {
-        // 每次切换模式都彻底重置游戏状态
         fullAudioCleanup();
         setGameState('IDLE');
         setWinner(null);
@@ -512,31 +512,71 @@ export default function App() {
         setReplayShockwave(null);
         setIsReplaying(false);
         setIsSavingAudio(false);
-        setGameHistory([]); // 清空历史
+        setGameHistory([]); 
         setGameMode(newMode);
-        // 不清除彩头，方便切换模式后继续用
         setIsRewardRevealed(false);
+        // 彩头不清除，方便继续
     };
 
-    // 点击开始按钮 -> 打开彩头输入弹窗
     const handleStartClick = () => {
         setShowRewardInput(true);
+        setViewedRewardContent(null);
     };
 
-    // 随机生成彩头
     const handleRandomReward = (player: 'p1' | 'p2') => {
         const randomReward = RANDOM_REWARDS[Math.floor(Math.random() * RANDOM_REWARDS.length)];
         if (player === 'p1') {
             setP1Reward(randomReward);
+            setP1Masked(false); // 随机生成后先明文显示，让用户确认
         } else {
             setP2Reward(randomReward);
+            setP2Masked(false);
         }
     };
 
-    // 真正的开始游戏逻辑（在弹窗确认后调用）
+    // 锁定（遮罩）彩头
+    const lockReward = (player: 'p1' | 'p2') => {
+        if (player === 'p1' && p1Reward.trim()) setP1Masked(true);
+        if (player === 'p2' && p2Reward.trim()) setP2Masked(true);
+    };
+
+    // 清空并重新输入（点击遮罩区域时）
+    const clearAndUnlock = (player: 'p1' | 'p2') => {
+        if (player === 'p1') {
+            setP1Reward('');
+            setP1Masked(false);
+        } else {
+            setP2Reward('');
+            setP2Masked(false);
+        }
+    };
+
+    // 发起密码查看
+    const initiatePasswordCheck = (player: 'p1' | 'p2') => {
+        setPasswordCheckState({ visible: true, player, input: '' });
+        setViewedRewardContent(null);
+    };
+
+    // 验证密码
+    const verifyPassword = () => {
+        if (passwordCheckState.input === unlockPassword) {
+            // 密码正确，显示内容
+            const content = passwordCheckState.player === 'p1' ? p1Reward : p2Reward;
+            setViewedRewardContent(content);
+            setPasswordCheckState(prev => ({ ...prev, visible: false }));
+        } else {
+            alert('密码错误');
+        }
+    };
+
     const launchGame = async () => {
-        setShowRewardInput(false); // 关闭弹窗
-        setIsRewardRevealed(false); // 重置揭晓状态
+        // 如果有内容未锁定，自动锁定
+        if (p1Reward) setP1Masked(true);
+        if (p2Reward) setP2Masked(true);
+
+        setShowRewardInput(false); 
+        setIsRewardRevealed(false); 
+        setViewedRewardContent(null);
         
         fullAudioCleanup();
         setIsSavingAudio(false); 
@@ -549,7 +589,6 @@ export default function App() {
                 const success = await initAudioEngine();
                 if (!success) { switchGameMode('TOUCH'); return; } 
             }
-            
             startMonitoringLoop();
             startRecording(); 
         }
@@ -600,18 +639,15 @@ export default function App() {
         historyRecorder.current.push({ step: 'GO', timestamp: now - startTimeRef.current });
     };
 
-    // --- 胜负判定 ---
     const handleVoiceTrigger = (pitch: number) => {
         if (isReplayingRef.current) return;
         if (stateRef.current !== 'WAITING' && stateRef.current !== 'GO') return;
 
         setDetectedFreq(Math.round(pitch));
-        
         let guessedWinner: Player = 'p1';
         if (pitch > 0) {
             guessedWinner = pitch > 200 ? 'p1' : 'p2'; 
         }
-        
         finishGame(guessedWinner);
     };
 
@@ -689,10 +725,8 @@ export default function App() {
         }
     };
 
-    // --- 极简回放系统 ---
     const startReplay = async () => {
         if (gameHistory.length === 0 || gameState !== 'ENDED') return;
-        
         setIsReplaying(true);
         setReplayShockwave(null);
 
@@ -700,14 +734,11 @@ export default function App() {
         if (!endFrame) { setIsReplaying(false); return; }
 
         let seekOffset = 0; 
-        let timeToVisualTrigger = 500; 
-
         if (endFrame.audioBlob && endFrame.recordingStartTime && endFrame.triggerTimestamp) {
             const triggerTime = endFrame.triggerTimestamp;
             const recStart = endFrame.recordingStartTime;
             const idealPlayStart = triggerTime - 500; 
             seekOffset = Math.max(0, (idealPlayStart - recStart) / 1000);
-            timeToVisualTrigger = 500; 
         }
 
         if (endFrame.audioBlob) {
@@ -717,7 +748,7 @@ export default function App() {
         const t1 = setTimeout(() => {
             if (!isReplayingRef.current) return;
             setReplayShockwave(endFrame.winner || null);
-        }, timeToVisualTrigger);
+        }, 500);
 
         const t2 = setTimeout(() => {
             setIsReplaying(false);
@@ -726,7 +757,7 @@ export default function App() {
             if (replaySourceRef.current) {
                 try { replaySourceRef.current.stop(); } catch(e){}
             }
-        }, timeToVisualTrigger + 2000); 
+        }, 2500); 
 
         replayTimeoutsRef.current.push(t1, t2);
     };
@@ -758,16 +789,18 @@ export default function App() {
         }
     };
 
-    // 键盘监听
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.repeat) return;
-            
-            // 全局彩头弹窗回车支持
+            // 只要弹窗是打开的，回车就尝试开始游戏
             if (showRewardInput) {
-                // e.isComposing 为 true 时表示用户正在使用中文输入法选词，此时不应触发提交
                 if (e.key === 'Enter' && !e.isComposing) {
-                    launchGame();
+                    // 如果有密码弹窗在，回车是确认密码
+                    if (passwordCheckState.visible) {
+                        verifyPassword();
+                    } else {
+                        launchGame();
+                    }
                 }
                 return;
             }
@@ -780,7 +813,7 @@ export default function App() {
         
         window.addEventListener('keydown', handleKeyDown as any);
         return () => window.removeEventListener('keydown', handleKeyDown as any);
-    }, [gameState, isReplaying, gameMode, showRewardInput, launchGame]);
+    }, [gameState, isReplaying, gameMode, showRewardInput, launchGame, passwordCheckState, unlockPassword]);
 
     // --- UI 组件 ---
     const PlayerZone = ({ id, label, colorClass, keyLabel, subLabel, hasReward }: { id: 'p1' | 'p2', label: string, colorClass: string, keyLabel: string, subLabel?: string, hasReward?: boolean }) => {
@@ -795,7 +828,6 @@ export default function App() {
         const rotationClass = id === 'p1' ? 'rotate-180 md:rotate-0' : '';
         const showShockwave = isReplaying && replayShockwave === id;
 
-        // 决定显示的图标
         let IconComponent;
         if (isWinner && !isReplaying) {
             IconComponent = <Trophy size={80} className="text-yellow-300 drop-shadow-lg animate-bounce sm:w-36 sm:h-36" fill="currentColor" />;
@@ -836,7 +868,6 @@ export default function App() {
                     <div className={`text-center z-10 ${isWinner ? 'text-white' : 'text-gray-600/60'}`}>
                         <div className="flex items-center justify-center gap-2">
                             <h2 className="text-2xl sm:text-3xl font-black tracking-wider">{label}</h2>
-                            {/* 彩头锁定图标：跟随玩家区域旋转 */}
                             {hasReward && !isWinner && !isLoser && (
                                 <div className="bg-yellow-100 text-yellow-600 p-1 rounded-full shadow-sm animate-fade-in" title="彩头已锁定">
                                     <Lock size={12} className="sm:w-4 sm:h-4" />
@@ -858,20 +889,14 @@ export default function App() {
             {/* 撒礼花特效 (回放时隐藏) */}
             {gameState === 'ENDED' && !isReplaying && winner && winReason !== 'FALSE_START' && <Confetti />}
 
-            {/* --- 顶部导航栏 (新设计) --- */}
+            {/* --- 顶部导航栏 --- */}
             <div className="h-16 bg-white/90 backdrop-blur shadow-sm flex items-center justify-between px-4 z-40 shrink-0 absolute top-0 left-0 right-0 w-full">
-                
-                {/* 左侧：Logo 和 外链 */}
                 <a href="https://bornforthis.cn/" target="_blank" rel="noreferrer" className="flex items-center gap-2 group hover:opacity-80 transition-opacity">
                     <CustomLogo className="w-8 h-8" />
                     <span className="font-bold text-gray-700 hidden md:block">AI悦创编程私教</span>
                     <span className="font-bold text-gray-700 md:hidden">AI悦创</span>
                 </a>
-
-                {/* 右侧：功能区 */}
                 <div className="flex items-center gap-3">
-                    
-                    {/* 模式切换胶囊 */}
                     <button 
                         onClick={() => switchGameMode(gameMode === 'TOUCH' ? 'VOICE' : 'TOUCH')}
                         className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full transition-all active:scale-95"
@@ -881,16 +906,12 @@ export default function App() {
                         <span className="text-xs font-bold hidden sm:inline">{gameMode === 'TOUCH' ? '触摸模式' : '声控模式'}</span>
                         <RefreshCw size={12} className="opacity-40" />
                     </button>
-
-                    {/* 音效开关 */}
                     <button 
                         onClick={() => setSoundEnabled(!soundEnabled)} 
                         className={`p-2 rounded-full transition-colors ${soundEnabled ? 'text-gray-600 hover:bg-gray-100' : 'text-gray-400 bg-gray-50'}`}
                     >
                         {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
                     </button>
-
-                    {/* 重开按钮 (仅结束时显示) */}
                     {gameState === 'ENDED' && !isReplaying && (
                         <button 
                             onClick={handleStartClick} 
@@ -907,63 +928,132 @@ export default function App() {
             {showRewardInput && (
                 <div className="absolute inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-md scale-100 animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[90vh]">
-                        <div className="flex items-center justify-center gap-2 mb-6 text-gray-800">
+                        <div className="flex items-center justify-center gap-2 mb-4 text-gray-800 relative">
                             <Gift className="text-indigo-500" />
                             <h2 className="text-xl font-black tracking-tight">本局彩头</h2>
+                            <button 
+                                onClick={() => setIsSettingPassword(!isSettingPassword)}
+                                className="absolute right-0 text-gray-400 hover:text-indigo-500 transition-colors text-xs flex items-center gap-1"
+                            >
+                                <KeyRound size={14}/> {isSettingPassword ? '收起设置' : '设置密码'}
+                            </button>
                         </div>
+
+                        {/* 密码设置区域 */}
+                        {isSettingPassword && (
+                            <div className="mb-6 p-3 bg-gray-50 rounded-xl border border-gray-100 animate-in slide-in-from-top-2">
+                                <label className="text-xs font-bold text-gray-500 uppercase block mb-1">解锁密码 (默认123456)</label>
+                                <input 
+                                    type="text" 
+                                    value={unlockPassword}
+                                    onChange={(e) => setUnlockPassword(e.target.value)}
+                                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
+                                />
+                            </div>
+                        )}
                         
-                        <div className="space-y-4 mb-6">
+                        <div className="space-y-6 mb-6">
+                            {/* P1 输入区 */}
                             <div className="space-y-1">
                                 <label className="text-xs font-bold text-rose-500 uppercase tracking-wider ml-1">P1 红方赢了想要...</label>
-                                <div className="flex gap-2">
-                                    <input 
-                                        type="text" 
-                                        value={p1Reward}
-                                        onChange={(e) => setP1Reward(e.target.value)}
-                                        placeholder="例: 免洗碗券一张" 
-                                        className="flex-1 px-4 py-3 bg-rose-50 border-2 border-rose-100 rounded-xl focus:outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-100 transition-all text-gray-700 font-medium placeholder:text-rose-300/70"
-                                    />
-                                    <button 
-                                        onClick={() => handleRandomReward('p1')}
-                                        className="px-3 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded-xl transition-colors flex items-center justify-center border-2 border-rose-200"
-                                        title="随机彩头"
-                                    >
-                                        <Dices size={20} />
-                                    </button>
+                                <div className="flex gap-2 relative">
+                                    {!p1Masked ? (
+                                        <>
+                                            <input 
+                                                type="text" 
+                                                value={p1Reward}
+                                                onChange={(e) => setP1Reward(e.target.value)}
+                                                placeholder="例: 免洗碗券一张" 
+                                                className="flex-1 px-4 py-3 bg-rose-50 border-2 border-rose-100 rounded-xl focus:outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-100 transition-all text-gray-700 font-medium placeholder:text-rose-300/70"
+                                            />
+                                            <button onClick={() => lockReward('p1')} className="px-3 bg-rose-100 text-rose-500 rounded-xl hover:bg-rose-200" title="锁定隐藏"><Lock size={20}/></button>
+                                            <button onClick={() => handleRandomReward('p1')} className="px-3 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200" title="随机"><Dices size={20}/></button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div 
+                                                onClick={() => clearAndUnlock('p1')}
+                                                className="flex-1 px-4 py-3 bg-rose-100 border-2 border-rose-200 rounded-xl text-rose-400 font-black tracking-widest cursor-pointer hover:bg-rose-200 flex items-center justify-between"
+                                            >
+                                                <span>******</span>
+                                                <span className="text-[10px] font-normal opacity-70">点击清空重填</span>
+                                            </div>
+                                            <button onClick={() => initiatePasswordCheck('p1')} className="px-3 bg-indigo-100 text-indigo-500 rounded-xl hover:bg-indigo-200" title="查看内容"><Eye size={20}/></button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
+
+                            {/* P2 输入区 */}
                             <div className="space-y-1">
                                 <label className="text-xs font-bold text-sky-500 uppercase tracking-wider ml-1">P2 蓝方赢了想要...</label>
-                                <div className="flex gap-2">
-                                    <input 
-                                        type="text" 
-                                        value={p2Reward}
-                                        onChange={(e) => setP2Reward(e.target.value)}
-                                        placeholder="例: 请喝大杯奶茶" 
-                                        className="flex-1 px-4 py-3 bg-sky-50 border-2 border-sky-100 rounded-xl focus:outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100 transition-all text-gray-700 font-medium placeholder:text-sky-300/70"
-                                    />
-                                    <button 
-                                        onClick={() => handleRandomReward('p2')}
-                                        className="px-3 bg-sky-100 hover:bg-sky-200 text-sky-600 rounded-xl transition-colors flex items-center justify-center border-2 border-sky-200"
-                                        title="随机彩头"
-                                    >
-                                        <Dices size={20} />
-                                    </button>
+                                <div className="flex gap-2 relative">
+                                    {!p2Masked ? (
+                                        <>
+                                            <input 
+                                                type="text" 
+                                                value={p2Reward}
+                                                onChange={(e) => setP2Reward(e.target.value)}
+                                                placeholder="例: 请喝大杯奶茶" 
+                                                className="flex-1 px-4 py-3 bg-sky-50 border-2 border-sky-100 rounded-xl focus:outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100 transition-all text-gray-700 font-medium placeholder:text-sky-300/70"
+                                            />
+                                            <button onClick={() => lockReward('p2')} className="px-3 bg-sky-100 text-sky-500 rounded-xl hover:bg-sky-200" title="锁定隐藏"><Lock size={20}/></button>
+                                            <button onClick={() => handleRandomReward('p2')} className="px-3 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200" title="随机"><Dices size={20}/></button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div 
+                                                onClick={() => clearAndUnlock('p2')}
+                                                className="flex-1 px-4 py-3 bg-sky-100 border-2 border-sky-200 rounded-xl text-sky-400 font-black tracking-widest cursor-pointer hover:bg-sky-200 flex items-center justify-between"
+                                            >
+                                                <span>******</span>
+                                                <span className="text-[10px] font-normal opacity-70">点击清空重填</span>
+                                            </div>
+                                            <button onClick={() => initiatePasswordCheck('p2')} className="px-3 bg-indigo-100 text-indigo-500 rounded-xl hover:bg-indigo-200" title="查看内容"><Eye size={20}/></button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>
+
+                        {/* 查看密码后的内容展示 */}
+                        {viewedRewardContent && (
+                            <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl text-center animate-in zoom-in">
+                                <div className="text-xs text-yellow-600 font-bold mb-1">已解密内容</div>
+                                <div className="text-lg font-black text-gray-800">{viewedRewardContent}</div>
+                            </div>
+                        )}
 
                         <button 
                             onClick={launchGame}
                             className="w-full py-4 bg-gray-900 hover:bg-black text-white rounded-2xl font-bold text-lg shadow-xl shadow-gray-200 transition-all active:scale-95 flex items-center justify-center gap-2"
                         >
-                            {(!p1Reward && !p2Reward) ? '跳过并开始' : '确认并开始'} <Play size={18} fill="currentColor"/>
+                            {(!p1Reward && !p2Reward) ? '跳过并开始' : '开始对决'} <Play size={18} fill="currentColor"/>
                         </button>
                     </div>
+
+                    {/* 密码验证弹窗 (嵌套在彩头弹窗之上) */}
+                    {passwordCheckState.visible && (
+                        <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-10 flex flex-col items-center justify-center p-6 rounded-3xl animate-in fade-in">
+                            <h3 className="text-lg font-bold text-gray-800 mb-4">输入解锁密码</h3>
+                            <input 
+                                type="password" 
+                                autoFocus
+                                value={passwordCheckState.input}
+                                onChange={(e) => setPasswordCheckState(prev => ({...prev, input: e.target.value}))}
+                                className="w-full max-w-[200px] text-center text-2xl tracking-widest px-4 py-3 bg-gray-100 rounded-xl border-2 border-transparent focus:border-indigo-500 focus:bg-white transition-all outline-none mb-4"
+                                placeholder="******"
+                            />
+                            <div className="flex gap-3 w-full max-w-[200px]">
+                                <button onClick={() => setPasswordCheckState(prev => ({...prev, visible: false}))} className="flex-1 py-2 bg-gray-200 rounded-lg font-bold text-gray-600">取消</button>
+                                <button onClick={verifyPassword} className="flex-1 py-2 bg-indigo-600 text-white rounded-lg font-bold">确认</button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
-            {/* IDLE 状态引导页 (仅显示标题和开始按钮，模式切换已移至顶部) */}
+            {/* IDLE 状态引导页 */}
             {gameState === 'IDLE' && !isReplaying && !showRewardInput && (
                 <div className="absolute inset-0 z-30 bg-white/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-fade-in">
                     <div className="mb-8">
@@ -1014,8 +1104,6 @@ export default function App() {
             <div className="flex-1 flex flex-col md:flex-row relative">
                 {gameState !== 'IDLE' && (
                     <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40 pointer-events-none flex flex-col items-center justify-center">
-                        {/* 移除了旧的中央彩头锁定图标 */}
-
                         {gameState === 'WAITING' && (
                             <div className="bg-white p-2 rounded-full shadow-lg border-4 border-gray-100 relative">
                                 {gameMode === 'VOICE' && <div className="absolute inset-0 rounded-full bg-rose-400 opacity-30 transition-transform duration-75 ease-out" style={{ transform: `scale(${1 + currentVolume})` }}></div>}
@@ -1031,7 +1119,6 @@ export default function App() {
                             </div>
                         )}
                         {gameState === 'ENDED' && (
-                            // 动态 class：回放时去除白色背景和阴影
                             <div className={`flex flex-col items-center ${isReplaying ? '' : 'bg-white p-4 rounded-2xl shadow-2xl border border-gray-100'} animate-pop-in pointer-events-auto`}>
                                 {!isReplaying && (
                                     <>
@@ -1089,7 +1176,7 @@ export default function App() {
                     subLabel="高音区" 
                     keyLabel="键盘 'A'" 
                     colorClass="bg-rose-50" 
-                    hasReward={!!p1Reward} // 传递是否有彩头
+                    hasReward={!!p1Reward} 
                 />
                 <div className="absolute inset-0 pointer-events-none z-10 flex md:flex-row flex-col"><div className="md:w-1/2 w-full h-1/2 md:h-full border-b md:border-b-0 md:border-r border-gray-200/50"></div></div>
                 <PlayerZone 
@@ -1098,7 +1185,7 @@ export default function App() {
                     subLabel="低音区" 
                     keyLabel="键盘 'L'" 
                     colorClass="bg-sky-50" 
-                    hasReward={!!p2Reward} // 传递是否有彩头
+                    hasReward={!!p2Reward} 
                 />
                 
                 {gameState === 'ENDED' && !isReplaying && gameHistory.length > 0 && !isSavingAudio && gameMode === 'VOICE' && (
