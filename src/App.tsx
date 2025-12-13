@@ -952,7 +952,8 @@ export default function App() {
                                     {!p1Masked ? (
                                         <>
                                             <input 
-                                                type="text" 
+                                                type="password"
+                                                autoComplete="off"
                                                 value={p1Reward}
                                                 onChange={(e) => setP1Reward(e.target.value)}
                                                 placeholder="例: 免洗碗券一张" 
@@ -982,6 +983,7 @@ export default function App() {
                                             <span className="text-xs text-gray-500 whitespace-nowrap">解锁密码:</span>
                                             <input 
                                                 type="password" 
+                                                autoComplete="off"
                                                 value={p1Password}
                                                 onChange={(e) => setP1Password(e.target.value)}
                                                 className="flex-1 px-2 py-1 bg-white border border-gray-300 rounded text-sm"
@@ -999,7 +1001,8 @@ export default function App() {
                                     {!p2Masked ? (
                                         <>
                                             <input 
-                                                type="text" 
+                                                type="password"
+                                                autoComplete="off"
                                                 value={p2Reward}
                                                 onChange={(e) => setP2Reward(e.target.value)}
                                                 placeholder="例: 请喝大杯奶茶" 
@@ -1029,6 +1032,7 @@ export default function App() {
                                             <span className="text-xs text-gray-500 whitespace-nowrap">解锁密码:</span>
                                             <input 
                                                 type="password" 
+                                                autoComplete="off"
                                                 value={p2Password}
                                                 onChange={(e) => setP2Password(e.target.value)}
                                                 className="flex-1 px-2 py-1 bg-white border border-gray-300 rounded text-sm"
