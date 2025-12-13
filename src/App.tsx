@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, KeyRound, X, Check, Settings2 } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, KeyRound } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
@@ -983,7 +983,6 @@ export default function App() {
                                             <span className="text-xs text-gray-500 whitespace-nowrap">解锁密码:</span>
                                             <input 
                                                 type="password" 
-                                                autoComplete="off"
                                                 value={p1Password}
                                                 onChange={(e) => setP1Password(e.target.value)}
                                                 className="flex-1 px-2 py-1 bg-white border border-gray-300 rounded text-sm"
@@ -1032,7 +1031,6 @@ export default function App() {
                                             <span className="text-xs text-gray-500 whitespace-nowrap">解锁密码:</span>
                                             <input 
                                                 type="password" 
-                                                autoComplete="off"
                                                 value={p2Password}
                                                 onChange={(e) => setP2Password(e.target.value)}
                                                 className="flex-1 px-2 py-1 bg-white border border-gray-300 rounded text-sm"
