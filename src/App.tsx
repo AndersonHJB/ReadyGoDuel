@@ -71,8 +71,13 @@ const Confetti = () => {
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        // 使用 dvh 高度计算
+        const updateSize = () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        };
+        updateSize();
+        window.addEventListener('resize', updateSize);
 
         const particles: any[] = [];
         const colors = ['#FFC700', '#FF0000', '#2E3192', '#41BBC7', '#73FF00', '#FF00EA'];
@@ -121,7 +126,10 @@ const Confetti = () => {
         };
         render();
 
-        return () => cancelAnimationFrame(animationId);
+        return () => {
+            cancelAnimationFrame(animationId);
+            window.removeEventListener('resize', updateSize);
+        };
     }, []);
 
     return <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-50" />;
@@ -790,11 +798,11 @@ export default function App() {
         // 决定显示的图标
         let IconComponent;
         if (isWinner && !isReplaying) {
-            IconComponent = <Trophy size={140} className="text-yellow-300 drop-shadow-lg animate-bounce" fill="currentColor" />;
+            IconComponent = <Trophy size={80} className="text-yellow-300 drop-shadow-lg animate-bounce sm:w-36 sm:h-36" fill="currentColor" />;
         } else if (gameMode === 'VOICE') {
-            IconComponent = <Mic size={100} className="text-gray-800/20 transition-colors duration-300" />;
+            IconComponent = <Mic size={80} className="text-gray-800/20 transition-colors duration-300 sm:w-28 sm:h-28" />;
         } else {
-            IconComponent = <Hand size={100} strokeWidth={1.5} className="text-gray-800/20 transition-colors duration-300" />;
+            IconComponent = <Hand size={80} strokeWidth={1.5} className="text-gray-800/20 transition-colors duration-300 sm:w-28 sm:h-28" />;
         }
 
         return (
@@ -804,20 +812,20 @@ export default function App() {
                     if (gameMode === 'TOUCH') { e.preventDefault(); handleTouchAction(id); }
                 }}
             >
-                <div className={`flex flex-col items-center justify-center w-full h-full p-4 ${rotationClass}`}>
-                    <div className={`transform transition-all duration-300 ${isWinner && !isReplaying ? 'scale-125 -translate-y-4' : ''}`}>
+                <div className={`flex flex-col items-center justify-center w-full h-full p-4 gap-4 ${rotationClass}`}>
+                    <div className={`transform transition-all duration-300 ${isWinner && !isReplaying ? 'scale-110 -translate-y-2' : ''}`}>
                         {isLoser && winReason === 'FALSE_START' ? (
                              <div className="flex flex-col items-center text-red-500/80 font-bold animate-pulse">
-                                <AlertTriangle size={80} /> <span className="text-2xl mt-2">抢跑!</span>
+                                <AlertTriangle size={60} className="sm:w-20 sm:h-20" /> <span className="text-xl mt-2 sm:text-2xl">抢跑!</span>
                             </div>
                         ) : (
                             <div className="relative">
                                 {showShockwave && (
                                     <>
                                         <div className="absolute inset-0 rounded-full bg-white opacity-80 animate-ping" style={{ animationDuration: '0.6s' }}></div>
-                                        <div className="absolute -inset-12 rounded-full border-4 border-white opacity-60 animate-ping" style={{ animationDuration: '1s' }}></div>
-                                        <div className="absolute -inset-20 flex items-center justify-center z-20">
-                                            <Zap size={120} className="text-yellow-300 drop-shadow-lg animate-pulse" fill="currentColor"/>
+                                        <div className="absolute -inset-8 rounded-full border-4 border-white opacity-60 animate-ping" style={{ animationDuration: '1s' }}></div>
+                                        <div className="absolute -inset-16 flex items-center justify-center z-20">
+                                            <Zap size={100} className="text-yellow-300 drop-shadow-lg animate-pulse" fill="currentColor"/>
                                         </div>
                                     </>
                                 )}
@@ -825,20 +833,20 @@ export default function App() {
                             </div>
                         )}
                     </div>
-                    <div className={`mt-6 text-center z-10 ${isWinner ? 'text-white' : 'text-gray-600/60'}`}>
-                        <div className="flex items-center justify-center gap-3">
-                            <h2 className="text-3xl font-black tracking-wider">{label}</h2>
+                    <div className={`text-center z-10 ${isWinner ? 'text-white' : 'text-gray-600/60'}`}>
+                        <div className="flex items-center justify-center gap-2">
+                            <h2 className="text-2xl sm:text-3xl font-black tracking-wider">{label}</h2>
                             {/* 彩头锁定图标：跟随玩家区域旋转 */}
                             {hasReward && !isWinner && !isLoser && (
-                                <div className="bg-yellow-100 text-yellow-600 p-1.5 rounded-full shadow-sm animate-fade-in" title="彩头已锁定">
-                                    <Lock size={16} />
+                                <div className="bg-yellow-100 text-yellow-600 p-1 rounded-full shadow-sm animate-fade-in" title="彩头已锁定">
+                                    <Lock size={12} className="sm:w-4 sm:h-4" />
                                 </div>
                             )}
                         </div>
                         {gameMode === 'VOICE' && subLabel && !showShockwave && (
-                            <p className={`text-sm font-bold mt-1 ${isWinner ? 'text-white/90' : 'text-gray-500'}`}>{subLabel}</p>
+                            <p className={`text-xs sm:text-sm font-bold mt-1 ${isWinner ? 'text-white/90' : 'text-gray-500'}`}>{subLabel}</p>
                         )}
-                        <p className="text-sm font-medium mt-1 opacity-70 hidden md:block">{gameMode === 'VOICE' ? '喊出声音!' : keyLabel}</p>
+                        <p className="text-xs sm:text-sm font-medium mt-1 opacity-70 hidden md:block">{gameMode === 'VOICE' ? '喊出声音!' : keyLabel}</p>
                     </div>
                 </div>
             </div>
@@ -846,7 +854,7 @@ export default function App() {
     };
 
     return (
-        <div className="w-full h-screen flex flex-col bg-white overflow-hidden font-sans relative">
+        <div className="w-full h-[100dvh] flex flex-col bg-white overflow-hidden font-sans relative">
             {/* 撒礼花特效 (回放时隐藏) */}
             {gameState === 'ENDED' && !isReplaying && winner && winReason !== 'FALSE_START' && <Confetti />}
 
@@ -898,7 +906,7 @@ export default function App() {
             {/* 彩头输入弹窗 */}
             {showRewardInput && (
                 <div className="absolute inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-md scale-100 animate-in zoom-in-95 duration-200">
+                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-md scale-100 animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[90vh]">
                         <div className="flex items-center justify-center gap-2 mb-6 text-gray-800">
                             <Gift className="text-indigo-500" />
                             <h2 className="text-xl font-black tracking-tight">本局彩头</h2>
@@ -959,10 +967,10 @@ export default function App() {
             {gameState === 'IDLE' && !isReplaying && !showRewardInput && (
                 <div className="absolute inset-0 z-30 bg-white/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-fade-in">
                     <div className="mb-8">
-                        <h1 className="text-4xl font-black text-gray-800 mb-4 tracking-tight">
+                        <h1 className="text-3xl sm:text-4xl font-black text-gray-800 mb-4 tracking-tight">
                             {gameMode === 'VOICE' ? '谁先发声谁赢' : '双人反应对决'}
                         </h1>
-                        <p className="text-gray-500 max-w-xs mx-auto text-base leading-relaxed">
+                        <p className="text-gray-500 max-w-xs mx-auto text-sm sm:text-base leading-relaxed">
                             {gameMode === 'VOICE' 
                                 ? <>看到 <strong className="text-rose-500">GO</strong> 信号时，立即喊出声音。<br/><span className="text-xs text-gray-400 mt-2 block">(请确保授予麦克风权限)</span></>
                                 : <>看到 <strong className="text-indigo-500">GO</strong> 信号时，立即点击屏幕。</>
