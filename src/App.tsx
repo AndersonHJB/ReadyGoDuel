@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Unlock, Sparkles, Dices, Eye, KeyRound, X, Check } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, KeyRound, X, Check, Settings2 } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
@@ -336,9 +336,11 @@ export default function App() {
     const [showRewardInput, setShowRewardInput] = useState(false);
     const [isRewardRevealed, setIsRewardRevealed] = useState(false);
     
-    // 密码锁状态
-    const [unlockPassword, setUnlockPassword] = useState('123456');
-    const [isSettingPassword, setIsSettingPassword] = useState(false);
+    // 独立密码锁状态
+    const [p1Password, setP1Password] = useState('123456');
+    const [p2Password, setP2Password] = useState('123456');
+    const [editingPwdPlayer, setEditingPwdPlayer] = useState<Player>(null); // 当前正在设置密码的玩家
+
     const [passwordCheckState, setPasswordCheckState] = useState<{ visible: boolean, player: Player, input: string }>({ visible: false, player: null, input: '' });
     const [viewedRewardContent, setViewedRewardContent] = useState<string | null>(null); // 查看密码成功后显示的内容
 
@@ -521,6 +523,7 @@ export default function App() {
     const handleStartClick = () => {
         setShowRewardInput(true);
         setViewedRewardContent(null);
+        setEditingPwdPlayer(null);
     };
 
     const handleRandomReward = (player: 'p1' | 'p2') => {
@@ -559,13 +562,22 @@ export default function App() {
 
     // 验证密码
     const verifyPassword = () => {
-        if (passwordCheckState.input === unlockPassword) {
+        const targetPwd = passwordCheckState.player === 'p1' ? p1Password : p2Password;
+        if (passwordCheckState.input === targetPwd) {
             // 密码正确，显示内容
             const content = passwordCheckState.player === 'p1' ? p1Reward : p2Reward;
             setViewedRewardContent(content);
             setPasswordCheckState(prev => ({ ...prev, visible: false }));
         } else {
             alert('密码错误');
+        }
+    };
+
+    const togglePwdSetting = (player: Player) => {
+        if (editingPwdPlayer === player) {
+            setEditingPwdPlayer(null);
+        } else {
+            setEditingPwdPlayer(player);
         }
     };
 
@@ -577,6 +589,7 @@ export default function App() {
         setShowRewardInput(false); 
         setIsRewardRevealed(false); 
         setViewedRewardContent(null);
+        setEditingPwdPlayer(null);
         
         fullAudioCleanup();
         setIsSavingAudio(false); 
@@ -792,10 +805,8 @@ export default function App() {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.repeat) return;
-            // 只要弹窗是打开的，回车就尝试开始游戏
             if (showRewardInput) {
                 if (e.key === 'Enter' && !e.isComposing) {
-                    // 如果有密码弹窗在，回车是确认密码
                     if (passwordCheckState.visible) {
                         verifyPassword();
                     } else {
@@ -813,7 +824,7 @@ export default function App() {
         
         window.addEventListener('keydown', handleKeyDown as any);
         return () => window.removeEventListener('keydown', handleKeyDown as any);
-    }, [gameState, isReplaying, gameMode, showRewardInput, launchGame, passwordCheckState, unlockPassword]);
+    }, [gameState, isReplaying, gameMode, showRewardInput, launchGame, passwordCheckState, p1Password, p2Password]);
 
     // --- UI 组件 ---
     const PlayerZone = ({ id, label, colorClass, keyLabel, subLabel, hasReward }: { id: 'p1' | 'p2', label: string, colorClass: string, keyLabel: string, subLabel?: string, hasReward?: boolean }) => {
@@ -928,29 +939,10 @@ export default function App() {
             {showRewardInput && (
                 <div className="absolute inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-md scale-100 animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[90vh]">
-                        <div className="flex items-center justify-center gap-2 mb-4 text-gray-800 relative">
+                        <div className="flex items-center justify-center gap-2 mb-4 text-gray-800">
                             <Gift className="text-indigo-500" />
                             <h2 className="text-xl font-black tracking-tight">本局彩头</h2>
-                            <button 
-                                onClick={() => setIsSettingPassword(!isSettingPassword)}
-                                className="absolute right-0 text-gray-400 hover:text-indigo-500 transition-colors text-xs flex items-center gap-1"
-                            >
-                                <KeyRound size={14}/> {isSettingPassword ? '收起设置' : '设置密码'}
-                            </button>
                         </div>
-
-                        {/* 密码设置区域 */}
-                        {isSettingPassword && (
-                            <div className="mb-6 p-3 bg-gray-50 rounded-xl border border-gray-100 animate-in slide-in-from-top-2">
-                                <label className="text-xs font-bold text-gray-500 uppercase block mb-1">解锁密码 (默认123456)</label>
-                                <input 
-                                    type="text" 
-                                    value={unlockPassword}
-                                    onChange={(e) => setUnlockPassword(e.target.value)}
-                                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm"
-                                />
-                            </div>
-                        )}
                         
                         <div className="space-y-6 mb-6">
                             {/* P1 输入区 */}
@@ -968,6 +960,7 @@ export default function App() {
                                             />
                                             <button onClick={() => lockReward('p1')} className="px-3 bg-rose-100 text-rose-500 rounded-xl hover:bg-rose-200" title="锁定隐藏"><Lock size={20}/></button>
                                             <button onClick={() => handleRandomReward('p1')} className="px-3 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200" title="随机"><Dices size={20}/></button>
+                                            <button onClick={() => togglePwdSetting('p1')} className={`px-3 rounded-xl hover:bg-gray-200 transition-colors ${editingPwdPlayer==='p1' ? 'bg-gray-200 text-gray-800' : 'bg-gray-100 text-gray-500'}`} title="设置密码"><KeyRound size={20}/></button>
                                         </>
                                     ) : (
                                         <>
@@ -982,6 +975,21 @@ export default function App() {
                                         </>
                                     )}
                                 </div>
+                                {/* P1 密码设置区域 */}
+                                {editingPwdPlayer === 'p1' && !p1Masked && (
+                                    <div className="mt-2 p-2 bg-gray-50 rounded-lg border border-gray-200 animate-in slide-in-from-top-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs text-gray-500 whitespace-nowrap">解锁密码:</span>
+                                            <input 
+                                                type="password" 
+                                                value={p1Password}
+                                                onChange={(e) => setP1Password(e.target.value)}
+                                                className="flex-1 px-2 py-1 bg-white border border-gray-300 rounded text-sm"
+                                                placeholder="默认 123456"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* P2 输入区 */}
@@ -999,6 +1007,7 @@ export default function App() {
                                             />
                                             <button onClick={() => lockReward('p2')} className="px-3 bg-sky-100 text-sky-500 rounded-xl hover:bg-sky-200" title="锁定隐藏"><Lock size={20}/></button>
                                             <button onClick={() => handleRandomReward('p2')} className="px-3 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200" title="随机"><Dices size={20}/></button>
+                                            <button onClick={() => togglePwdSetting('p2')} className={`px-3 rounded-xl hover:bg-gray-200 transition-colors ${editingPwdPlayer==='p2' ? 'bg-gray-200 text-gray-800' : 'bg-gray-100 text-gray-500'}`} title="设置密码"><KeyRound size={20}/></button>
                                         </>
                                     ) : (
                                         <>
@@ -1013,6 +1022,21 @@ export default function App() {
                                         </>
                                     )}
                                 </div>
+                                {/* P2 密码设置区域 */}
+                                {editingPwdPlayer === 'p2' && !p2Masked && (
+                                    <div className="mt-2 p-2 bg-gray-50 rounded-lg border border-gray-200 animate-in slide-in-from-top-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs text-gray-500 whitespace-nowrap">解锁密码:</span>
+                                            <input 
+                                                type="password" 
+                                                value={p2Password}
+                                                onChange={(e) => setP2Password(e.target.value)}
+                                                className="flex-1 px-2 py-1 bg-white border border-gray-300 rounded text-sm"
+                                                placeholder="默认 123456"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
