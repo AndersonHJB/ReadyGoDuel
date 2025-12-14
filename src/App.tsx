@@ -608,7 +608,6 @@ export default function App() {
             }
 
             // 绘制二维码图片
-            // 注意：这里使用 api.qrserver.com 生成二维码图片
             // 为了避免跨域 Tainted Canvas 问题，我们需要尝试设置 crossOrigin
             const qrSize = 180;
             const qrUrl = "https://ai.bornforthis.cn/images/ReadyGoDuel.png";
@@ -617,7 +616,7 @@ export default function App() {
             qrImg.crossOrigin = "Anonymous"; 
             qrImg.src = qrUrl;
 
-            await new Promise((resolve, reject) => {
+            await new Promise((resolve) => {
                 qrImg.onload = resolve;
                 qrImg.onerror = () => {
                     // 如果跨域加载失败，绘制一个替代的矩形或文本
@@ -1329,9 +1328,11 @@ export default function App() {
                         <div className="flex gap-2 w-full mt-auto">
                             <button 
                                 onClick={generateBattleReport}
-                                className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-colors"
+                                disabled={isGeneratingReport}
+                                className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                <FileImage size={18}/> 生成总战报
+                                {isGeneratingReport ? <Loader2 size={18} className="animate-spin"/> : <FileImage size={18}/>} 
+                                {isGeneratingReport ? '生成中...' : '生成总战报'}
                             </button>
                             <button 
                                 onClick={() => switchGameMode('TOUCH')}
@@ -1485,9 +1486,11 @@ export default function App() {
                                         <div className="flex gap-2 mt-4 w-full justify-center">
                                             <button 
                                                 onClick={generateBattleReport}
-                                                className="flex-1 max-w-[120px] py-2 px-3 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold text-sm hover:bg-gray-50 flex items-center justify-center gap-1 shadow-sm"
+                                                disabled={isGeneratingReport} // Add disabled
+                                                className={`flex-1 max-w-[120px] py-2 px-3 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold text-sm hover:bg-gray-50 flex items-center justify-center gap-1 shadow-sm ${isGeneratingReport ? 'opacity-50 cursor-not-allowed' : ''}`} // Add styling
                                             >
-                                                <FileImage size={14}/> 战报
+                                                {isGeneratingReport ? <Loader2 size={14} className="animate-spin"/> : <FileImage size={14}/>} 
+                                                战报
                                             </button>
 
                                             {gameMode === 'INFINITE' && !isReplaying ? (
