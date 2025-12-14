@@ -555,73 +555,108 @@ export default function App() {
             
             // 动态高度计算
             let height = 800; // 默认单局高度
-            let listHeight = 0;
             if (isInfiniteReport) {
-                listHeight = infiniteStats.length * 90; // 每行90px
-                height = 100 + 160 + listHeight + 350; // header + score + list + footer
+                // 无限模式：生成包含所有对局的“长图”战绩海报
+                // 布局结构：
+                // 1. Header (100)
+                // 2. Winner & Score (250)
+                // 3. List Title (50)
+                // 4. List (N * 90)  <-- Dynamic Height
+                // 5. Footer (250)
+                const listHeight = infiniteStats.length * 90;
+                height = 100 + 250 + 50 + listHeight + 250; 
+                // 确保有最小高度
+                height = Math.max(height, 1000);
             }
             
             canvas.width = width;
             canvas.height = height;
 
-            // 1. 背景色
+            // 1. 背景色 (纯白)
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, width, height);
 
             // 2. 标题
-            ctx.fillStyle = '#1e293b';
-            ctx.font = 'bold 40px sans-serif';
+            ctx.fillStyle = '#1e293b'; // slate-800
+            ctx.font = 'bold 44px sans-serif';
             ctx.textAlign = 'center';
             const title = isInfiniteReport ? '∞ 无限世界战报' : 'Ready Go Duel 战报';
             ctx.fillText(title, width / 2, 80);
 
-            // 3. 绘制内容
+            // 3. 时间
+            const now = new Date();
+            const timeString = now.toLocaleString('zh-CN', { 
+                year: 'numeric', month: '2-digit', day: '2-digit', 
+                hour: '2-digit', minute: '2-digit', second: '2-digit' 
+            });
+            ctx.fillStyle = '#64748b'; // slate-500
+            ctx.font = '20px sans-serif';
+            ctx.fillText(timeString, width / 2, 120);
+
+            // 4. 内容区域
             if (isInfiniteReport) {
-                // --- 无限模式绘制逻辑 ---
                 const p1Wins = infiniteStats.filter(r => r.winner === 'p1').length;
                 const p2Wins = infiniteStats.filter(r => r.winner === 'p2').length;
+                const total = infiniteStats.length;
 
-                // 比分看板
-                const scoreBoxY = 120;
-                // 红方看板
-                drawRoundedRect(ctx, 40, scoreBoxY, 250, 120, 16, '#fff1f2'); // rose-50
-                ctx.textAlign = 'center';
-                ctx.fillStyle = '#fb7185'; // rose-400
-                ctx.font = 'bold 20px sans-serif';
-                ctx.fillText('红方胜场', 40 + 125, scoreBoxY + 40);
-                ctx.fillStyle = '#e11d48'; // rose-600
-                ctx.font = 'bold 60px sans-serif';
-                ctx.fillText(p1Wins.toString(), 40 + 125, scoreBoxY + 100);
+                // 最终胜负 (顶部区域)
+                let resultText = "势均力敌";
+                let resultColor = "#64748b"; // gray
+                if (p1Wins > p2Wins) {
+                    resultText = "红方最终胜利!";
+                    resultColor = "#f43f5e"; // rose
+                } else if (p2Wins > p1Wins) {
+                    resultText = "蓝方最终胜利!";
+                    resultColor = "#0ea5e9"; // blue
+                }
 
-                // 蓝方看板
-                drawRoundedRect(ctx, 310, scoreBoxY, 250, 120, 16, '#eff6ff'); // blue-50
-                ctx.fillStyle = '#60a5fa'; // blue-400
-                ctx.font = 'bold 20px sans-serif';
-                ctx.fillText('蓝方胜场', 310 + 125, scoreBoxY + 40);
-                ctx.fillStyle = '#2563eb'; // blue-600
-                ctx.font = 'bold 60px sans-serif';
-                ctx.fillText(p2Wins.toString(), 310 + 125, scoreBoxY + 100);
+                ctx.fillStyle = resultColor;
+                ctx.font = 'bold 64px sans-serif';
+                ctx.fillText(resultText, width / 2, 220);
 
-                // 列表
-                let currentY = scoreBoxY + 120 + 30; // 30px gap
+                // 总对局数
+                ctx.fillStyle = '#334155';
+                ctx.font = 'bold 24px sans-serif';
+                ctx.fillText(`共进行 ${total} 轮`, width / 2, 270);
+
+                // 比分详情
+                ctx.font = 'bold 40px sans-serif';
+                ctx.fillStyle = '#f43f5e';
+                ctx.fillText(`${p1Wins}`, width / 2 - 80, 330);
+                ctx.fillStyle = '#0ea5e9';
+                ctx.fillText(`${p2Wins}`, width / 2 + 80, 330);
+                
+                ctx.fillStyle = '#94a3b8';
+                ctx.font = '20px sans-serif';
+                ctx.fillText(':', width / 2, 328);
+                
+                // 列表标题
+                const listStartY = 380;
+                ctx.textAlign = 'left';
+                ctx.fillStyle = '#334155';
+                ctx.font = 'bold 24px sans-serif';
+                ctx.fillText('完整对局记录', 40, listStartY);
+
+                // 循环绘制所有对局
+                let itemY = listStartY + 30;
                 infiniteStats.forEach((round) => {
                     // 行背景
-                    drawRoundedRect(ctx, 40, currentY, 520, 70, 12, '#f8fafc'); // slate-50
+                    drawRoundedRect(ctx, 40, itemY, 520, 70, 12, '#f8fafc'); // slate-50
                     
                     // 序号 #1
                     ctx.textAlign = 'left';
                     ctx.fillStyle = '#94a3b8'; // slate-400
                     ctx.font = 'bold 20px sans-serif';
-                    ctx.fillText(`#${round.roundNumber}`, 60, currentY + 42);
+                    ctx.fillText(`#${round.roundNumber}`, 60, itemY + 42);
 
                     // 胜者
                     ctx.font = 'bold 24px sans-serif';
                     if (round.winner === 'p1') {
                         ctx.fillStyle = '#f43f5e'; // rose-500
-                        ctx.fillText('红方', 110, currentY + 42);
+                        ctx.fillText('红方胜', 120, itemY + 42);
                     } else {
                         ctx.fillStyle = '#0ea5e9'; // sky-500
-                        ctx.fillText('蓝方', 110, currentY + 42);
+                        ctx.fillText('蓝方胜', 120, itemY + 42);
                     }
 
                     // 奖励
@@ -630,10 +665,10 @@ export default function App() {
                     ctx.font = '20px sans-serif';
                     // 截断过长文字
                     let rewardText = round.reward;
-                    if (rewardText.length > 10) rewardText = rewardText.substring(0, 9) + '...';
-                    ctx.fillText(`赢走: ${rewardText}`, 540, currentY + 42);
+                    if (rewardText.length > 12) rewardText = rewardText.substring(0, 11) + '...';
+                    ctx.fillText(`赢走: ${rewardText}`, 540, itemY + 42);
 
-                    currentY += 90; // 70px height + 20px gap
+                    itemY += 90; // 70px height + 20px gap
                 });
 
             } else {
@@ -649,15 +684,14 @@ export default function App() {
                 ctx.fillStyle = primaryColor;
                 ctx.font = 'bold 80px sans-serif';
                 const winnerText = winner === 'p1' ? '红方胜' : (winner === 'p2' ? '蓝方胜' : '平局');
-                ctx.fillText(winnerText, width / 2, 200);
+                ctx.fillText(winnerText, width / 2, 220);
 
                 // 详情
                 ctx.fillStyle = '#334155';
                 ctx.font = '24px sans-serif';
-                let yPos = 280;
+                let yPos = 300;
                 
-                // 修复：无限世界模式在单局结算时的显示
-                const modeName = gameMode === 'TOUCH' ? '触摸模式' : (gameMode === 'VOICE' ? '声控模式' : '无限世界');
+                const modeName = gameMode === 'INFINITE' ? '无限世界' : (gameMode === 'TOUCH' ? '触摸模式' : '声控模式');
                 
                 ctx.fillText(`模式: ${modeName}`, width / 2, yPos); yPos += 50;
                 
@@ -672,30 +706,19 @@ export default function App() {
                 // 彩头
                 const reward = winner === 'p1' ? p1Reward : p2Reward;
                 if (reward) {
-                     yPos += 20;
-                     drawRoundedRect(ctx, 100, yPos - 40, 400, 80, 16, '#fff7ed'); // orange-50
+                     yPos += 30;
+                     drawRoundedRect(ctx, 50, yPos - 50, 500, 100, 20, '#fff7ed'); // orange-50
                      ctx.fillStyle = '#ea580c'; // orange-600
-                     ctx.font = 'bold 30px sans-serif';
-                     ctx.fillText(`赢取: ${reward}`, width / 2, yPos + 10);
+                     ctx.font = 'bold 36px sans-serif';
+                     ctx.fillText(`赢取: ${reward}`, width / 2, yPos + 15);
                 }
             }
 
-            // 4. 底部 Footer (二维码 + 时间)
-            const footerY = height - 260;
+            // 5. 底部 Footer (二维码)
+            const footerY = height - 280;
             
-            // 绘制时间
-            const now = new Date();
-            const timeString = now.toLocaleString('zh-CN', { 
-                year: 'numeric', month: '2-digit', day: '2-digit', 
-                hour: '2-digit', minute: '2-digit', second: '2-digit' 
-            });
-            ctx.textAlign = 'center';
-            ctx.fillStyle = '#94a3b8';
-            ctx.font = '16px sans-serif';
-            ctx.fillText(timeString, width / 2, footerY - 20);
-
             // 绘制二维码
-            const qrSize = 180;
+            const qrSize = 200;
             const qrUrl = "https://ai.bornforthis.cn/images/ReadyGoDuel.png";
             
             const qrImg = new Image();
@@ -706,7 +729,6 @@ export default function App() {
                 qrImg.onload = resolve;
                 qrImg.onerror = () => {
                     console.warn("QR Code load failed");
-                    // 绘制占位
                     ctx.fillStyle = '#cbd5e1';
                     ctx.fillRect((width - qrSize) / 2, footerY, qrSize, qrSize);
                     resolve(null);
@@ -718,9 +740,10 @@ export default function App() {
             }
 
             // 底部 Slogan
-            ctx.fillStyle = '#64748b';
-            ctx.font = 'bold 18px sans-serif';
-            ctx.fillText("扫码挑战 Ready Go Duel", width / 2, footerY + qrSize + 40);
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#64748b'; // slate-500
+            ctx.font = 'bold 20px sans-serif';
+            ctx.fillText("扫码挑战 Ready Go Duel", width / 2, footerY + qrSize + 50);
 
             // 生成图片 URL
             const dataUrl = canvas.toDataURL('image/png');
