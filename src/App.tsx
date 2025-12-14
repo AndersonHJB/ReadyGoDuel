@@ -637,7 +637,7 @@ export default function App() {
                 });
 
             } else {
-                // --- 单局模式绘制逻辑 (保持简洁) ---
+                // --- 单局模式绘制逻辑 ---
                 const primaryColor = winner === 'p1' ? '#f43f5e' : (winner === 'p2' ? '#0ea5e9' : '#64748b');
                 
                 // 顶部装饰条
@@ -655,7 +655,10 @@ export default function App() {
                 ctx.fillStyle = '#334155';
                 ctx.font = '24px sans-serif';
                 let yPos = 280;
-                const modeName = gameMode === 'TOUCH' ? '触摸模式' : '声控模式';
+                
+                // 修复：无限世界模式在单局结算时的显示
+                const modeName = gameMode === 'TOUCH' ? '触摸模式' : (gameMode === 'VOICE' ? '声控模式' : '无限世界');
+                
                 ctx.fillText(`模式: ${modeName}`, width / 2, yPos); yPos += 50;
                 
                 if (winReason === 'REACTION') {
