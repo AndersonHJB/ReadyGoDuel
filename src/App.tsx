@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut, FileImage, Download } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
@@ -360,6 +360,11 @@ export default function App() {
     const [infiniteStats, setInfiniteStats] = useState<InfiniteRoundRecord[]>([]);
     const [showInfiniteSummary, setShowInfiniteSummary] = useState(false);
 
+    // 战报生成状态
+    const [showReportModal, setShowReportModal] = useState(false);
+    const [reportImageUrl, setReportImageUrl] = useState<string | null>(null);
+    const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+
     // Debug & 状态标识
     const [isMicInitialized, setIsMicInitialized] = useState(false);
     const [isSavingAudio, setIsSavingAudio] = useState(false);
@@ -519,6 +524,135 @@ export default function App() {
         };
         loop();
     };
+
+    // --- 战报生成逻辑 ---
+    const generateBattleReport = async () => {
+        setIsGeneratingReport(true);
+        try {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+
+            // 设置画布尺寸
+            const width = 600;
+            const height = 800;
+            canvas.width = width;
+            canvas.height = height;
+
+            // 背景色 (根据赢家)
+            const bgColor = winner === 'p1' ? '#fff1f2' : (winner === 'p2' ? '#f0f9ff' : '#ffffff');
+            const primaryColor = winner === 'p1' ? '#f43f5e' : (winner === 'p2' ? '#0ea5e9' : '#64748b');
+            
+            // 绘制背景
+            ctx.fillStyle = bgColor;
+            ctx.fillRect(0, 0, width, height);
+
+            // 绘制顶部装饰条
+            ctx.fillStyle = primaryColor;
+            ctx.fillRect(0, 0, width, 20);
+
+            // 绘制标题
+            ctx.fillStyle = '#1e293b';
+            ctx.font = 'bold 40px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Ready Go Duel 战报', width / 2, 80);
+
+            // 绘制时间
+            const now = new Date();
+            const timeString = now.toLocaleString('zh-CN', { 
+                year: 'numeric', month: '2-digit', day: '2-digit', 
+                hour: '2-digit', minute: '2-digit', second: '2-digit' 
+            });
+            ctx.fillStyle = '#64748b';
+            ctx.font = '20px sans-serif';
+            ctx.fillText(timeString, width / 2, 115);
+
+            // 绘制胜负结果 (大字)
+            ctx.fillStyle = primaryColor;
+            ctx.font = 'bold 80px sans-serif';
+            const winnerText = winner === 'p1' ? '红方胜' : (winner === 'p2' ? '蓝方胜' : '平局');
+            ctx.fillText(winnerText, width / 2, 220);
+
+            // 绘制数据详情
+            ctx.fillStyle = '#334155';
+            ctx.font = '24px sans-serif';
+            let yPos = 300;
+            
+            if (gameMode === 'INFINITE' && showInfiniteSummary) {
+                // 无限模式总结数据
+                const p1Wins = infiniteStats.filter(r => r.winner === 'p1').length;
+                const p2Wins = infiniteStats.filter(r => r.winner === 'p2').length;
+                ctx.fillText(`模式: 无限世界挑战`, width / 2, yPos); yPos += 40;
+                ctx.fillText(`总场次: ${infiniteStats.length}`, width / 2, yPos); yPos += 40;
+                ctx.fillText(`比分: 红方 ${p1Wins} - ${p2Wins} 蓝方`, width / 2, yPos); yPos += 60;
+            } else {
+                // 单局数据
+                const modeName = gameMode === 'TOUCH' ? '触摸模式' : (gameMode === 'VOICE' ? '声控模式' : '无限世界');
+                ctx.fillText(`模式: ${modeName}`, width / 2, yPos); yPos += 40;
+                if (winReason === 'REACTION') {
+                    ctx.fillText(`反应时间: ${reactionTime} ms`, width / 2, yPos); yPos += 40;
+                } else if (winReason === 'FALSE_START') {
+                    ctx.fillText(`获胜原因: 对方抢跑`, width / 2, yPos); yPos += 40;
+                } else if (winReason === 'VOICE_TRIGGER') {
+                    ctx.fillText(`触发频率: ${detectedFreq} Hz`, width / 2, yPos); yPos += 40;
+                }
+                
+                // 绘制彩头 (如果有)
+                const reward = winner === 'p1' ? p1Reward : p2Reward;
+                if (reward) {
+                     yPos += 20;
+                     ctx.fillStyle = '#b45309'; // amber-700
+                     ctx.font = 'bold 28px sans-serif';
+                     ctx.fillText(`赢取奖励: ${reward}`, width / 2, yPos); yPos += 40;
+                }
+            }
+
+            // 绘制二维码图片
+            // 注意：这里使用 api.qrserver.com 生成二维码图片
+            // 为了避免跨域 Tainted Canvas 问题，我们需要尝试设置 crossOrigin
+            const qrSize = 180;
+            const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=https://ai.bornforthis.cn/ReadyGoDuel/";
+            
+            const qrImg = new Image();
+            qrImg.crossOrigin = "Anonymous"; 
+            qrImg.src = qrUrl;
+
+            await new Promise((resolve, reject) => {
+                qrImg.onload = resolve;
+                qrImg.onerror = () => {
+                    // 如果跨域加载失败，绘制一个替代的矩形或文本
+                    console.warn("QR Code load failed, drawing placeholder");
+                    ctx.fillStyle = '#cbd5e1';
+                    ctx.fillRect((width - qrSize) / 2, height - 240, qrSize, qrSize);
+                    ctx.fillStyle = '#475569';
+                    ctx.font = '16px sans-serif';
+                    ctx.fillText("Scan to Play", width / 2, height - 150);
+                    resolve(null);
+                };
+            });
+
+            if (qrImg.complete && qrImg.naturalWidth !== 0) {
+                 ctx.drawImage(qrImg, (width - qrSize) / 2, height - 250, qrSize, qrSize);
+            }
+
+            // 底部文字
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '16px sans-serif';
+            ctx.fillText("扫码立即对决", width / 2, height - 40);
+
+            // 生成图片 URL
+            const dataUrl = canvas.toDataURL('image/png');
+            setReportImageUrl(dataUrl);
+            setShowReportModal(true);
+
+        } catch (e) {
+            console.error("Generate Report Failed", e);
+            alert("战报生成失败，请重试");
+        } finally {
+            setIsGeneratingReport(false);
+        }
+    };
+
 
     // --- 游戏流程控制 ---
 
@@ -1192,12 +1326,53 @@ export default function App() {
                             {infiniteStats.length === 0 && <div className="text-center text-gray-400 py-8">暂无对战记录</div>}
                         </div>
 
-                        <button 
-                            onClick={() => switchGameMode('TOUCH')}
-                            className="w-full py-3 bg-gray-900 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-black transition-colors"
-                        >
-                            <LogOut size={18}/> 结束并退出
-                        </button>
+                        <div className="flex gap-2 w-full mt-auto">
+                            <button 
+                                onClick={generateBattleReport}
+                                className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-colors"
+                            >
+                                <FileImage size={18}/> 生成总战报
+                            </button>
+                            <button 
+                                onClick={() => switchGameMode('TOUCH')}
+                                className="flex-1 py-3 bg-gray-900 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-black transition-colors"
+                            >
+                                <LogOut size={18}/> 退出
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {/* 战报模态框 (显示生成的图片) */}
+            {showReportModal && (
+                <div className="absolute inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-300" onClick={() => setShowReportModal(false)}>
+                    <div className="relative max-w-sm w-full" onClick={e => e.stopPropagation()}>
+                        <div className="bg-white p-2 rounded-2xl shadow-2xl overflow-hidden">
+                            {reportImageUrl ? (
+                                <img src={reportImageUrl} alt="Battle Report" className="w-full h-auto rounded-xl block" />
+                            ) : (
+                                <div className="h-64 flex items-center justify-center text-gray-400">图片生成中...</div>
+                            )}
+                        </div>
+                        <div className="mt-4 flex justify-center gap-4">
+                            <button 
+                                onClick={() => setShowReportModal(false)}
+                                className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors backdrop-blur-md"
+                            >
+                                <XCircle size={24} />
+                            </button>
+                            {reportImageUrl && (
+                                <a 
+                                    href={reportImageUrl} 
+                                    download={`ReadyGoDuel_Report_${Date.now()}.png`}
+                                    className="px-6 py-3 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full font-bold flex items-center gap-2 shadow-lg transition-all active:scale-95"
+                                >
+                                    <Download size={20}/> 保存图片
+                                </a>
+                            )}
+                        </div>
+                        <p className="text-white/50 text-center text-sm mt-4">长按图片可保存到相册</p>
                     </div>
                 </div>
             )}
@@ -1306,17 +1481,32 @@ export default function App() {
                                             </div>
                                         )}
                                         
-                                        {/* 无限模式控制按钮 */}
-                                        {gameMode === 'INFINITE' && !isReplaying && (
-                                            <div className="flex gap-2 mt-4 w-full">
-                                                <button onClick={handleExitInfinite} className="flex-1 py-2 px-3 bg-gray-100 text-gray-600 rounded-xl font-bold text-sm hover:bg-gray-200 flex items-center justify-center gap-1">
-                                                    <LogOut size={14}/> 退出
-                                                </button>
-                                                <button onClick={handleNextRound} className="flex-1 py-2 px-3 bg-purple-600 text-white rounded-xl font-bold text-sm shadow-lg hover:bg-purple-700 flex items-center justify-center gap-1">
-                                                    <RefreshCw size={14}/> 下一轮(随机)
-                                                </button>
-                                            </div>
-                                        )}
+                                        {/* 控制按钮组 */}
+                                        <div className="flex gap-2 mt-4 w-full justify-center">
+                                            <button 
+                                                onClick={generateBattleReport}
+                                                className="flex-1 max-w-[120px] py-2 px-3 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold text-sm hover:bg-gray-50 flex items-center justify-center gap-1 shadow-sm"
+                                            >
+                                                <FileImage size={14}/> 战报
+                                            </button>
+
+                                            {gameMode === 'INFINITE' && !isReplaying ? (
+                                                <>
+                                                    <button onClick={handleExitInfinite} className="flex-1 py-2 px-3 bg-gray-100 text-gray-600 rounded-xl font-bold text-sm hover:bg-gray-200 flex items-center justify-center gap-1">
+                                                        <LogOut size={14}/> 退出
+                                                    </button>
+                                                    <button onClick={handleNextRound} className="flex-1 py-2 px-3 bg-purple-600 text-white rounded-xl font-bold text-sm shadow-lg hover:bg-purple-700 flex items-center justify-center gap-1">
+                                                        <RefreshCw size={14}/> 下一轮
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                !isReplaying && gameHistory.length > 0 && !isSavingAudio && gameMode === 'VOICE' && (
+                                                    <button onClick={startReplay} className={`flex-1 max-w-[140px] flex items-center justify-center gap-2 px-4 py-2 backdrop-blur border text-white rounded-xl text-sm font-bold shadow-lg active:scale-95 transition-all bg-rose-500/90 border-rose-400 hover:bg-rose-600`}>
+                                                        <Volume2 size={16} /> 高光时刻
+                                                    </button>
+                                                )
+                                            )}
+                                        </div>
                                     </>
                                 )}
                                 
@@ -1352,11 +1542,8 @@ export default function App() {
                 />
                 
                 {gameState === 'ENDED' && !isReplaying && gameHistory.length > 0 && !isSavingAudio && gameMode === 'VOICE' && (
-                     <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-30 pointer-events-auto">
-                        <button onClick={startReplay} className={`flex items-center gap-2 px-5 py-2 backdrop-blur border text-white rounded-full text-sm font-bold shadow-lg active:scale-95 transition-all bg-rose-500/90 border-rose-400 hover:bg-rose-600`}>
-                            <Volume2 size={16} /> 高光时刻
-                        </button>
-                     </div>
+                    // 底部控制栏已整合到上方动态区域，此处留空以免遮挡
+                    <></>
                 )}
             </div>
         </div>
