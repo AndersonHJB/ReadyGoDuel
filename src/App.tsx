@@ -325,6 +325,23 @@ const detectPitch = (buffer: Float32Array, sampleRate: number): number => {
     return -1;
 };
 
+// --- Canvas 绘制圆角矩形辅助函数 ---
+function drawRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number, fillStyle: string) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+    ctx.fillStyle = fillStyle;
+    ctx.fill();
+}
+
 export default function App() {
     // --- 状态 ---
     const [gameState, setGameState] = useState<GameState>('IDLE');
@@ -533,82 +550,148 @@ export default function App() {
             const ctx = canvas.getContext('2d');
             if (!ctx) return;
 
-            // 设置画布尺寸
+            const isInfiniteReport = gameMode === 'INFINITE' && showInfiniteSummary;
             const width = 600;
-            const height = 800;
+            
+            // 动态高度计算
+            let height = 800; // 默认单局高度
+            let listHeight = 0;
+            if (isInfiniteReport) {
+                listHeight = infiniteStats.length * 90; // 每行90px
+                height = 100 + 160 + listHeight + 350; // header + score + list + footer
+            }
+            
             canvas.width = width;
             canvas.height = height;
 
-            // 背景色 (根据赢家)
-            const bgColor = winner === 'p1' ? '#fff1f2' : (winner === 'p2' ? '#f0f9ff' : '#ffffff');
-            const primaryColor = winner === 'p1' ? '#f43f5e' : (winner === 'p2' ? '#0ea5e9' : '#64748b');
-            
-            // 绘制背景
-            ctx.fillStyle = bgColor;
+            // 1. 背景色
+            ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, width, height);
 
-            // 绘制顶部装饰条
-            ctx.fillStyle = primaryColor;
-            ctx.fillRect(0, 0, width, 20);
-
-            // 绘制标题
+            // 2. 标题
             ctx.fillStyle = '#1e293b';
             ctx.font = 'bold 40px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText('Ready Go Duel 战报', width / 2, 80);
+            const title = isInfiniteReport ? '∞ 无限世界战报' : 'Ready Go Duel 战报';
+            ctx.fillText(title, width / 2, 80);
 
+            // 3. 绘制内容
+            if (isInfiniteReport) {
+                // --- 无限模式绘制逻辑 ---
+                const p1Wins = infiniteStats.filter(r => r.winner === 'p1').length;
+                const p2Wins = infiniteStats.filter(r => r.winner === 'p2').length;
+
+                // 比分看板
+                const scoreBoxY = 120;
+                // 红方看板
+                drawRoundedRect(ctx, 40, scoreBoxY, 250, 120, 16, '#fff1f2'); // rose-50
+                ctx.textAlign = 'center';
+                ctx.fillStyle = '#fb7185'; // rose-400
+                ctx.font = 'bold 20px sans-serif';
+                ctx.fillText('红方胜场', 40 + 125, scoreBoxY + 40);
+                ctx.fillStyle = '#e11d48'; // rose-600
+                ctx.font = 'bold 60px sans-serif';
+                ctx.fillText(p1Wins.toString(), 40 + 125, scoreBoxY + 100);
+
+                // 蓝方看板
+                drawRoundedRect(ctx, 310, scoreBoxY, 250, 120, 16, '#eff6ff'); // blue-50
+                ctx.fillStyle = '#60a5fa'; // blue-400
+                ctx.font = 'bold 20px sans-serif';
+                ctx.fillText('蓝方胜场', 310 + 125, scoreBoxY + 40);
+                ctx.fillStyle = '#2563eb'; // blue-600
+                ctx.font = 'bold 60px sans-serif';
+                ctx.fillText(p2Wins.toString(), 310 + 125, scoreBoxY + 100);
+
+                // 列表
+                let currentY = scoreBoxY + 120 + 30; // 30px gap
+                infiniteStats.forEach((round) => {
+                    // 行背景
+                    drawRoundedRect(ctx, 40, currentY, 520, 70, 12, '#f8fafc'); // slate-50
+                    
+                    // 序号 #1
+                    ctx.textAlign = 'left';
+                    ctx.fillStyle = '#94a3b8'; // slate-400
+                    ctx.font = 'bold 20px sans-serif';
+                    ctx.fillText(`#${round.roundNumber}`, 60, currentY + 42);
+
+                    // 胜者
+                    ctx.font = 'bold 24px sans-serif';
+                    if (round.winner === 'p1') {
+                        ctx.fillStyle = '#f43f5e'; // rose-500
+                        ctx.fillText('红方', 110, currentY + 42);
+                    } else {
+                        ctx.fillStyle = '#0ea5e9'; // sky-500
+                        ctx.fillText('蓝方', 110, currentY + 42);
+                    }
+
+                    // 奖励
+                    ctx.textAlign = 'right';
+                    ctx.fillStyle = '#475569'; // slate-600
+                    ctx.font = '20px sans-serif';
+                    // 截断过长文字
+                    let rewardText = round.reward;
+                    if (rewardText.length > 10) rewardText = rewardText.substring(0, 9) + '...';
+                    ctx.fillText(`赢走: ${rewardText}`, 540, currentY + 42);
+
+                    currentY += 90; // 70px height + 20px gap
+                });
+
+            } else {
+                // --- 单局模式绘制逻辑 (保持简洁) ---
+                const primaryColor = winner === 'p1' ? '#f43f5e' : (winner === 'p2' ? '#0ea5e9' : '#64748b');
+                
+                // 顶部装饰条
+                ctx.fillStyle = primaryColor;
+                ctx.fillRect(0, 0, width, 20);
+
+                // 胜负大字
+                ctx.textAlign = 'center';
+                ctx.fillStyle = primaryColor;
+                ctx.font = 'bold 80px sans-serif';
+                const winnerText = winner === 'p1' ? '红方胜' : (winner === 'p2' ? '蓝方胜' : '平局');
+                ctx.fillText(winnerText, width / 2, 200);
+
+                // 详情
+                ctx.fillStyle = '#334155';
+                ctx.font = '24px sans-serif';
+                let yPos = 280;
+                const modeName = gameMode === 'TOUCH' ? '触摸模式' : '声控模式';
+                ctx.fillText(`模式: ${modeName}`, width / 2, yPos); yPos += 50;
+                
+                if (winReason === 'REACTION') {
+                    ctx.fillText(`反应时间: ${reactionTime} ms`, width / 2, yPos); yPos += 50;
+                } else if (winReason === 'FALSE_START') {
+                    ctx.fillText(`获胜原因: 对方抢跑`, width / 2, yPos); yPos += 50;
+                } else if (winReason === 'VOICE_TRIGGER') {
+                    ctx.fillText(`触发频率: ${detectedFreq} Hz`, width / 2, yPos); yPos += 50;
+                }
+
+                // 彩头
+                const reward = winner === 'p1' ? p1Reward : p2Reward;
+                if (reward) {
+                     yPos += 20;
+                     drawRoundedRect(ctx, 100, yPos - 40, 400, 80, 16, '#fff7ed'); // orange-50
+                     ctx.fillStyle = '#ea580c'; // orange-600
+                     ctx.font = 'bold 30px sans-serif';
+                     ctx.fillText(`赢取: ${reward}`, width / 2, yPos + 10);
+                }
+            }
+
+            // 4. 底部 Footer (二维码 + 时间)
+            const footerY = height - 260;
+            
             // 绘制时间
             const now = new Date();
             const timeString = now.toLocaleString('zh-CN', { 
                 year: 'numeric', month: '2-digit', day: '2-digit', 
                 hour: '2-digit', minute: '2-digit', second: '2-digit' 
             });
-            ctx.fillStyle = '#64748b';
-            ctx.font = '20px sans-serif';
-            ctx.fillText(timeString, width / 2, 115);
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '16px sans-serif';
+            ctx.fillText(timeString, width / 2, footerY - 20);
 
-            // 绘制胜负结果 (大字)
-            ctx.fillStyle = primaryColor;
-            ctx.font = 'bold 80px sans-serif';
-            const winnerText = winner === 'p1' ? '红方胜' : (winner === 'p2' ? '蓝方胜' : '平局');
-            ctx.fillText(winnerText, width / 2, 220);
-
-            // 绘制数据详情
-            ctx.fillStyle = '#334155';
-            ctx.font = '24px sans-serif';
-            let yPos = 300;
-            
-            if (gameMode === 'INFINITE' && showInfiniteSummary) {
-                // 无限模式总结数据
-                const p1Wins = infiniteStats.filter(r => r.winner === 'p1').length;
-                const p2Wins = infiniteStats.filter(r => r.winner === 'p2').length;
-                ctx.fillText(`模式: 无限世界挑战`, width / 2, yPos); yPos += 40;
-                ctx.fillText(`总场次: ${infiniteStats.length}`, width / 2, yPos); yPos += 40;
-                ctx.fillText(`比分: 红方 ${p1Wins} - ${p2Wins} 蓝方`, width / 2, yPos); yPos += 60;
-            } else {
-                // 单局数据
-                const modeName = gameMode === 'TOUCH' ? '触摸模式' : (gameMode === 'VOICE' ? '声控模式' : '无限世界');
-                ctx.fillText(`模式: ${modeName}`, width / 2, yPos); yPos += 40;
-                if (winReason === 'REACTION') {
-                    ctx.fillText(`反应时间: ${reactionTime} ms`, width / 2, yPos); yPos += 40;
-                } else if (winReason === 'FALSE_START') {
-                    ctx.fillText(`获胜原因: 对方抢跑`, width / 2, yPos); yPos += 40;
-                } else if (winReason === 'VOICE_TRIGGER') {
-                    ctx.fillText(`触发频率: ${detectedFreq} Hz`, width / 2, yPos); yPos += 40;
-                }
-                
-                // 绘制彩头 (如果有)
-                const reward = winner === 'p1' ? p1Reward : p2Reward;
-                if (reward) {
-                     yPos += 20;
-                     ctx.fillStyle = '#b45309'; // amber-700
-                     ctx.font = 'bold 28px sans-serif';
-                     ctx.fillText(`赢取奖励: ${reward}`, width / 2, yPos); yPos += 40;
-                }
-            }
-
-            // 绘制二维码图片
-            // 为了避免跨域 Tainted Canvas 问题，我们需要尝试设置 crossOrigin
+            // 绘制二维码
             const qrSize = 180;
             const qrUrl = "https://ai.bornforthis.cn/images/ReadyGoDuel.png";
             
@@ -619,25 +702,22 @@ export default function App() {
             await new Promise((resolve) => {
                 qrImg.onload = resolve;
                 qrImg.onerror = () => {
-                    // 如果跨域加载失败，绘制一个替代的矩形或文本
-                    console.warn("QR Code load failed, drawing placeholder");
+                    console.warn("QR Code load failed");
+                    // 绘制占位
                     ctx.fillStyle = '#cbd5e1';
-                    ctx.fillRect((width - qrSize) / 2, height - 240, qrSize, qrSize);
-                    ctx.fillStyle = '#475569';
-                    ctx.font = '16px sans-serif';
-                    ctx.fillText("Scan to Play", width / 2, height - 150);
+                    ctx.fillRect((width - qrSize) / 2, footerY, qrSize, qrSize);
                     resolve(null);
                 };
             });
 
             if (qrImg.complete && qrImg.naturalWidth !== 0) {
-                 ctx.drawImage(qrImg, (width - qrSize) / 2, height - 250, qrSize, qrSize);
+                 ctx.drawImage(qrImg, (width - qrSize) / 2, footerY, qrSize, qrSize);
             }
 
-            // 底部文字
-            ctx.fillStyle = '#94a3b8';
-            ctx.font = '16px sans-serif';
-            ctx.fillText("扫码立即对决", width / 2, height - 40);
+            // 底部 Slogan
+            ctx.fillStyle = '#64748b';
+            ctx.font = 'bold 18px sans-serif';
+            ctx.fillText("扫码挑战 Ready Go Duel", width / 2, footerY + qrSize + 40);
 
             // 生成图片 URL
             const dataUrl = canvas.toDataURL('image/png');
