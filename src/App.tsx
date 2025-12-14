@@ -556,7 +556,7 @@ export default function App() {
             // 动态高度计算
             let height = 800; // 默认单局高度
             if (isInfiniteReport) {
-                height = 1100; // 无限模式固定高度海报
+                height = 1000; // 降低高度，原1100
             }
             
             canvas.width = width;
@@ -602,10 +602,10 @@ export default function App() {
 
                 ctx.fillStyle = resultColor;
                 ctx.font = 'bold 64px sans-serif';
-                ctx.fillText(resultText, width / 2, 220);
+                ctx.fillText(resultText, width / 2, 210); // 上移
 
                 // 数据统计盒
-                const statBoxY = 300;
+                const statBoxY = 270; // 上移
                 drawRoundedRect(ctx, 40, statBoxY, 520, 160, 24, '#f8fafc'); // slate-50 background
 
                 // 总对局
@@ -631,7 +631,7 @@ export default function App() {
                 ctx.fillText(p2Wins.toString(), 470, statBoxY + 110);
 
                 // 列表标题
-                const listStartY = 500; // 调整位置
+                const listStartY = 460; // 上移
                 ctx.textAlign = 'left';
                 ctx.fillStyle = '#334155';
                 ctx.font = 'bold 24px sans-serif';
@@ -724,10 +724,11 @@ export default function App() {
             }
 
             // 5. 底部 Footer (二维码)
-            const footerY = height - 280;
+            // 减小二维码尺寸和留白
+            const qrSize = isInfiniteReport ? 150 : 200;
+            const footerY = height - (isInfiniteReport ? 220 : 280);
             
             // 绘制二维码
-            const qrSize = 200;
             const qrUrl = "https://ai.bornforthis.cn/images/ReadyGoDuel.png";
             
             const qrImg = new Image();
@@ -752,7 +753,7 @@ export default function App() {
             ctx.textAlign = 'center';
             ctx.fillStyle = '#64748b'; // slate-500
             ctx.font = 'bold 20px sans-serif';
-            ctx.fillText("扫码挑战 Ready Go Duel", width / 2, footerY + qrSize + 50);
+            ctx.fillText("扫码挑战 Ready Go Duel", width / 2, footerY + qrSize + 40);
 
             // 生成图片 URL
             const dataUrl = canvas.toDataURL('image/png');
