@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, KeyRound, Infinity, XCircle, LogOut } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
 type Player = 'p1' | 'p2' | null;
 type WinReason = 'REACTION' | 'FALSE_START' | 'VOICE_TRIGGER' | null;
-type GameMode = 'TOUCH' | 'VOICE' | 'INFINITE'; // 新增 INFINITE
+type GameMode = 'TOUCH' | 'VOICE' | 'INFINITE'; 
 
 interface GameLog {
     step: 'WAITING' | 'GO' | 'END';
@@ -344,6 +344,10 @@ export default function App() {
     const [showRewardInput, setShowRewardInput] = useState(false);
     const [isRewardRevealed, setIsRewardRevealed] = useState(false);
     
+    // 输入框显示类型状态 (text/password)
+    const [p1InputType, setP1InputType] = useState<'text' | 'password'>('text');
+    const [p2InputType, setP2InputType] = useState<'text' | 'password'>('text');
+    
     // 独立密码锁状态
     const [p1Password, setP1Password] = useState('123456');
     const [p2Password, setP2Password] = useState('123456');
@@ -538,6 +542,9 @@ export default function App() {
         setShowRewardInput(true);
         setViewedRewardContent(null);
         setEditingPwdPlayer(null);
+        // 重置输入框类型为 text，方便输入中文
+        setP1InputType('text');
+        setP2InputType('text');
     };
 
     const handleRandomReward = (player: 'p1' | 'p2') => {
@@ -545,9 +552,11 @@ export default function App() {
         if (player === 'p1') {
             setP1Reward(randomReward);
             setP1Masked(false); 
+            setP1InputType('text'); // 随机生成后设为可见
         } else {
             setP2Reward(randomReward);
             setP2Masked(false);
+            setP2InputType('text');
         }
     };
 
@@ -560,9 +569,19 @@ export default function App() {
         if (player === 'p1') {
             setP1Reward('');
             setP1Masked(false);
+            setP1InputType('text'); // 重置为text方便输入
         } else {
             setP2Reward('');
             setP2Masked(false);
+            setP2InputType('text');
+        }
+    };
+
+    const toggleInputType = (player: 'p1' | 'p2') => {
+        if (player === 'p1') {
+            setP1InputType(prev => prev === 'text' ? 'password' : 'text');
+        } else {
+            setP2InputType(prev => prev === 'text' ? 'password' : 'text');
         }
     };
 
@@ -855,7 +874,7 @@ export default function App() {
             }
             
             if (gameMode === 'VOICE' && gameState !== 'IDLE') return; 
-            if (gameMode !== 'INFINITE' && e.code === 'Space' && gameState === 'IDLE' && !isReplaying) handleStartClick(); // 无限模式下禁止空格重新开始，需走UI
+            if (gameMode !== 'INFINITE' && e.code === 'Space' && gameState === 'IDLE' && !isReplaying) handleStartClick(); 
             if (gameMode === 'TOUCH' || gameMode === 'INFINITE') {
                  if (e.key.toLowerCase() === 'a') handleTouchAction('p1');
                  if (e.key.toLowerCase() === 'l') handleTouchAction('p2');
@@ -974,36 +993,45 @@ export default function App() {
             {/* 彩头输入弹窗 */}
             {showRewardInput && (
                 <div className="absolute inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-md scale-100 animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[90vh]">
-                        <div className="flex items-center justify-center gap-2 mb-4 text-gray-800">
+                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-md scale-100 animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[85dvh] flex flex-col">
+                        <div className="flex items-center justify-center gap-2 mb-2 sm:mb-4 text-gray-800 shrink-0">
                             {gameMode === 'INFINITE' ? <Infinity className="text-purple-600"/> : <Gift className="text-indigo-500" />}
                             <h2 className="text-xl font-black tracking-tight">{gameMode === 'INFINITE' ? '无限世界·首局设定' : '本局彩头'}</h2>
                         </div>
                         
-                        <div className="space-y-6 mb-6">
+                        <div className="space-y-4 sm:space-y-6 mb-4 sm:mb-6 overflow-y-auto flex-1">
                             {/* P1 输入区 */}
                             <div className="space-y-1">
                                 <label className="text-xs font-bold text-rose-500 uppercase tracking-wider ml-1">P1 红方赢了想要...</label>
                                 <div className="flex gap-2 relative">
                                     {!p1Masked ? (
                                         <>
-                                            <input 
-                                                type="password"
-                                                autoComplete="off"
-                                                value={p1Reward}
-                                                onChange={(e) => setP1Reward(e.target.value)}
-                                                placeholder="例: 免洗碗券一张" 
-                                                className="flex-1 px-4 py-3 bg-rose-50 border-2 border-rose-100 rounded-xl focus:outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-100 transition-all text-gray-700 font-medium placeholder:text-rose-300/70"
-                                            />
-                                            <button onClick={() => lockReward('p1')} className="px-3 bg-rose-100 text-rose-500 rounded-xl hover:bg-rose-200" title="锁定隐藏"><Lock size={20}/></button>
-                                            <button onClick={() => handleRandomReward('p1')} className="px-3 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200" title="随机"><Dices size={20}/></button>
-                                            <button onClick={() => togglePwdSetting('p1')} className={`px-3 rounded-xl hover:bg-gray-200 transition-colors ${editingPwdPlayer==='p1' ? 'bg-gray-200 text-gray-800' : 'bg-gray-100 text-gray-500'}`} title="设置密码"><KeyRound size={20}/></button>
+                                            <div className="relative flex-1">
+                                                <input 
+                                                    type={p1InputType}
+                                                    autoComplete="off"
+                                                    value={p1Reward}
+                                                    onChange={(e) => setP1Reward(e.target.value)}
+                                                    placeholder="例: 免洗碗券一张" 
+                                                    className="w-full px-3 sm:px-4 py-2 sm:py-3 bg-rose-50 border-2 border-rose-100 rounded-xl focus:outline-none focus:border-rose-400 focus:ring-4 focus:ring-rose-100 transition-all text-gray-700 font-medium placeholder:text-rose-300/70"
+                                                />
+                                                <button 
+                                                    onClick={() => toggleInputType('p1')}
+                                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-rose-400/60 hover:text-rose-500 transition-colors p-1"
+                                                    title={p1InputType === 'text' ? '隐藏内容(密文)' : '显示内容(明文)'}
+                                                >
+                                                    {p1InputType === 'text' ? <EyeOff size={16}/> : <Eye size={16}/>}
+                                                </button>
+                                            </div>
+                                            <button onClick={() => lockReward('p1')} className="px-2 sm:px-3 bg-rose-100 text-rose-500 rounded-xl hover:bg-rose-200" title="锁定并隐藏"><Lock size={18} className="sm:w-5 sm:h-5"/></button>
+                                            <button onClick={() => handleRandomReward('p1')} className="px-2 sm:px-3 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200" title="随机生成"><Dices size={18} className="sm:w-5 sm:h-5"/></button>
+                                            <button onClick={() => togglePwdSetting('p1')} className={`px-2 sm:px-3 rounded-xl hover:bg-gray-200 transition-colors ${editingPwdPlayer==='p1' ? 'bg-gray-200 text-gray-800' : 'bg-gray-100 text-gray-500'}`} title="设置密码"><KeyRound size={18} className="sm:w-5 sm:h-5"/></button>
                                         </>
                                     ) : (
                                         <>
                                             <div 
                                                 onClick={() => clearAndUnlock('p1')}
-                                                className="flex-1 px-4 py-3 bg-rose-100 border-2 border-rose-200 rounded-xl text-rose-400 font-black tracking-widest cursor-pointer hover:bg-rose-200 flex items-center justify-between"
+                                                className="flex-1 px-3 sm:px-4 py-2 sm:py-3 bg-rose-100 border-2 border-rose-200 rounded-xl text-rose-400 font-black tracking-widest cursor-pointer hover:bg-rose-200 flex items-center justify-between"
                                             >
                                                 <span>******</span>
                                                 <span className="text-[10px] font-normal opacity-70">点击清空重填</span>
@@ -1035,23 +1063,32 @@ export default function App() {
                                 <div className="flex gap-2 relative">
                                     {!p2Masked ? (
                                         <>
-                                            <input 
-                                                type="password"
-                                                autoComplete="off"
-                                                value={p2Reward}
-                                                onChange={(e) => setP2Reward(e.target.value)}
-                                                placeholder="例: 请喝大杯奶茶" 
-                                                className="flex-1 px-4 py-3 bg-sky-50 border-2 border-sky-100 rounded-xl focus:outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100 transition-all text-gray-700 font-medium placeholder:text-sky-300/70"
-                                            />
-                                            <button onClick={() => lockReward('p2')} className="px-3 bg-sky-100 text-sky-500 rounded-xl hover:bg-sky-200" title="锁定隐藏"><Lock size={20}/></button>
-                                            <button onClick={() => handleRandomReward('p2')} className="px-3 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200" title="随机"><Dices size={20}/></button>
-                                            <button onClick={() => togglePwdSetting('p2')} className={`px-3 rounded-xl hover:bg-gray-200 transition-colors ${editingPwdPlayer==='p2' ? 'bg-gray-200 text-gray-800' : 'bg-gray-100 text-gray-500'}`} title="设置密码"><KeyRound size={20}/></button>
+                                            <div className="relative flex-1">
+                                                <input 
+                                                    type={p2InputType}
+                                                    autoComplete="off"
+                                                    value={p2Reward}
+                                                    onChange={(e) => setP2Reward(e.target.value)}
+                                                    placeholder="例: 请喝大杯奶茶" 
+                                                    className="w-full px-3 sm:px-4 py-2 sm:py-3 bg-sky-50 border-2 border-sky-100 rounded-xl focus:outline-none focus:border-sky-400 focus:ring-4 focus:ring-sky-100 transition-all text-gray-700 font-medium placeholder:text-sky-300/70"
+                                                />
+                                                <button 
+                                                    onClick={() => toggleInputType('p2')}
+                                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-sky-400/60 hover:text-sky-500 transition-colors p-1"
+                                                    title={p2InputType === 'text' ? '隐藏内容(密文)' : '显示内容(明文)'}
+                                                >
+                                                    {p2InputType === 'text' ? <EyeOff size={16}/> : <Eye size={16}/>}
+                                                </button>
+                                            </div>
+                                            <button onClick={() => lockReward('p2')} className="px-2 sm:px-3 bg-sky-100 text-sky-500 rounded-xl hover:bg-sky-200" title="锁定并隐藏"><Lock size={18} className="sm:w-5 sm:h-5"/></button>
+                                            <button onClick={() => handleRandomReward('p2')} className="px-2 sm:px-3 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200" title="随机生成"><Dices size={18} className="sm:w-5 sm:h-5"/></button>
+                                            <button onClick={() => togglePwdSetting('p2')} className={`px-2 sm:px-3 rounded-xl hover:bg-gray-200 transition-colors ${editingPwdPlayer==='p2' ? 'bg-gray-200 text-gray-800' : 'bg-gray-100 text-gray-500'}`} title="设置密码"><KeyRound size={18} className="sm:w-5 sm:h-5"/></button>
                                         </>
                                     ) : (
                                         <>
                                             <div 
                                                 onClick={() => clearAndUnlock('p2')}
-                                                className="flex-1 px-4 py-3 bg-sky-100 border-2 border-sky-200 rounded-xl text-sky-400 font-black tracking-widest cursor-pointer hover:bg-sky-200 flex items-center justify-between"
+                                                className="flex-1 px-3 sm:px-4 py-2 sm:py-3 bg-sky-100 border-2 border-sky-200 rounded-xl text-sky-400 font-black tracking-widest cursor-pointer hover:bg-sky-200 flex items-center justify-between"
                                             >
                                                 <span>******</span>
                                                 <span className="text-[10px] font-normal opacity-70">点击清空重填</span>
@@ -1080,7 +1117,7 @@ export default function App() {
 
                         {/* 查看密码后的内容展示 */}
                         {viewedRewardContent && (
-                            <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl text-center animate-in zoom-in">
+                            <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-yellow-50 border border-yellow-200 rounded-xl text-center animate-in zoom-in shrink-0">
                                 <div className="text-xs text-yellow-600 font-bold mb-1">已解密内容</div>
                                 <div className="text-lg font-black text-gray-800">{viewedRewardContent}</div>
                             </div>
@@ -1088,7 +1125,7 @@ export default function App() {
 
                         <button 
                             onClick={launchGame}
-                            className={`w-full py-4 text-white rounded-2xl font-bold text-lg shadow-xl shadow-gray-200 transition-all active:scale-95 flex items-center justify-center gap-2
+                            className={`w-full py-3 sm:py-4 text-white rounded-2xl font-bold text-lg shadow-xl shadow-gray-200 transition-all active:scale-95 flex items-center justify-center gap-2 shrink-0
                                 ${gameMode === 'INFINITE' ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700' : 'bg-gray-900 hover:bg-black'}`}
                         >
                             {(!p1Reward && !p2Reward && gameMode !== 'INFINITE') ? '跳过并开始' : '开始对决'} <Play size={18} fill="currentColor"/>
