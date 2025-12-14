@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut, FileImage, Download } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut, FileImage, Download, Edit3, Trash2, Save } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
@@ -29,13 +29,16 @@ interface InfiniteRoundRecord {
     timestamp: number;
 }
 
-// --- 常量：随机彩头库 ---
+// --- 常量 ---
 const RANDOM_REWARDS = [
     "请喝一杯大杯奶茶", "洗一周的碗", "负责取一周外卖", "请吃一顿大餐", "发 50 元红包",
     "按摩肩膀 10 分钟", "唱一首情歌", "跑腿去买零食", "无条件答应一个要求", "包办一周家务",
     "夸奖对方 5 分钟", "换个搞笑头像一天", "朋友圈发丑照一张", "请看一场电影", "倒洗脚水一次",
     "学猫叫三声", "负责剥虾", "买一个对方喜欢的皮肤", "承包周末做饭", "听从指挥一小时"
 ];
+
+const STORAGE_KEY_TITLE = 'RGD_CUSTOM_TITLE';
+const STORAGE_KEY_TS = 'RGD_TITLE_TS';
 
 // --- 全局共享音频上下文 (iOS 修复关键) ---
 let sharedAudioCtx: AudioContext | null = null;
@@ -353,6 +356,11 @@ export default function App() {
     const [detectedFreq, setDetectedFreq] = useState<number>(0); 
     const [currentVolume, setCurrentVolume] = useState<number>(0); 
     
+    // 自定义游戏名称状态
+    const [customTitle, setCustomTitle] = useState<string>('');
+    const [showTitleModal, setShowTitleModal] = useState(false);
+    const [tempTitleInput, setTempTitleInput] = useState('');
+
     // 彩头相关状态
     const [p1Reward, setP1Reward] = useState('');
     const [p2Reward, setP2Reward] = useState('');
@@ -418,6 +426,39 @@ export default function App() {
     const recordingStartTimeRef = useRef<number>(0);
     const replaySourceRef = useRef<AudioBufferSourceNode | null>(null);
     const replayTimeoutsRef = useRef<number[]>([]); 
+
+    // 初始化：读取本地存储的 Title
+    useEffect(() => {
+        const savedTitle = localStorage.getItem(STORAGE_KEY_TITLE);
+        const savedTs = localStorage.getItem(STORAGE_KEY_TS);
+
+        if (savedTitle && savedTs) {
+            const now = Date.now();
+            const daysDiff = (now - parseInt(savedTs)) / (1000 * 60 * 60 * 24);
+            if (daysDiff < 7) {
+                setCustomTitle(savedTitle);
+            } else {
+                // 过期清除
+                localStorage.removeItem(STORAGE_KEY_TITLE);
+                localStorage.removeItem(STORAGE_KEY_TS);
+            }
+        }
+    }, []);
+
+    // 保存 Title
+    const handleSaveTitle = () => {
+        const titleToSave = tempTitleInput.trim();
+        if (!titleToSave) {
+            setCustomTitle('');
+            localStorage.removeItem(STORAGE_KEY_TITLE);
+            localStorage.removeItem(STORAGE_KEY_TS);
+        } else {
+            setCustomTitle(titleToSave);
+            localStorage.setItem(STORAGE_KEY_TITLE, titleToSave);
+            localStorage.setItem(STORAGE_KEY_TS, Date.now().toString());
+        }
+        setShowTitleModal(false);
+    };
 
     // 同步状态到 Refs
     useEffect(() => { stateRef.current = gameState; }, [gameState]);
@@ -570,7 +611,19 @@ export default function App() {
             ctx.fillStyle = '#1e293b'; // slate-800
             ctx.font = 'bold 44px sans-serif';
             ctx.textAlign = 'center';
-            const title = isInfiniteReport ? '∞ 无限世界战报' : 'Ready Go Duel 战报';
+            
+            // 动态标题逻辑
+            let title = 'Ready Go Duel 战报';
+            if (isInfiniteReport) {
+                title = customTitle ? `${customTitle} 战报` : '∞ 无限世界战报';
+            } else {
+                title = customTitle ? `${customTitle} 战报` : 'Ready Go Duel 战报';
+            }
+
+            // 处理标题过长自动缩放
+            if (ctx.measureText(title).width > width - 40) {
+                 ctx.font = 'bold 32px sans-serif';
+            }
             ctx.fillText(title, width / 2, 80);
 
             // 3. 时间
@@ -1111,9 +1164,11 @@ export default function App() {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.repeat) return;
-            if (showRewardInput) {
+            if (showRewardInput || showTitleModal) {
                 if (e.key === 'Enter' && !e.isComposing) {
-                    if (passwordCheckState.visible) {
+                    if (showTitleModal) {
+                         handleSaveTitle();
+                    } else if (passwordCheckState.visible) {
                         verifyPassword();
                     } else {
                         launchGame();
@@ -1132,7 +1187,7 @@ export default function App() {
         
         window.addEventListener('keydown', handleKeyDown as any);
         return () => window.removeEventListener('keydown', handleKeyDown as any);
-    }, [gameState, isReplaying, gameMode, showRewardInput, launchGame, passwordCheckState, p1Password, p2Password]);
+    }, [gameState, isReplaying, gameMode, showRewardInput, showTitleModal, launchGame, passwordCheckState, p1Password, p2Password, tempTitleInput]);
 
     // --- UI 组件 ---
     const PlayerZone = ({ id, label, colorClass, keyLabel, subLabel, hasReward }: { id: 'p1' | 'p2', label: string, colorClass: string, keyLabel: string, subLabel?: string, hasReward?: boolean }) => {
@@ -1221,12 +1276,25 @@ export default function App() {
                         <button onClick={() => switchGameMode('VOICE')} className={`p-1.5 rounded-full transition-all ${gameMode === 'VOICE' ? 'bg-white shadow text-rose-600' : 'text-gray-400 hover:text-gray-600'}`} title="声控模式"><Mic size={16}/></button>
                         <button onClick={() => switchGameMode('INFINITE')} className={`p-1.5 rounded-full transition-all ${gameMode === 'INFINITE' ? 'bg-white shadow text-purple-600' : 'text-gray-400 hover:text-gray-600'}`} title="无限世界"><Infinity size={16}/></button>
                     </div>
+                    
+                    <button 
+                        onClick={() => {
+                            setTempTitleInput(customTitle);
+                            setShowTitleModal(true);
+                        }} 
+                        className={`p-2 rounded-full transition-colors ${customTitle ? 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100' : 'text-gray-400 bg-gray-50 hover:bg-gray-100'}`}
+                        title="设置游戏名称"
+                    >
+                        <Edit3 size={20} />
+                    </button>
+
                     <button 
                         onClick={() => setSoundEnabled(!soundEnabled)} 
                         className={`p-2 rounded-full transition-colors ${soundEnabled ? 'text-gray-600 hover:bg-gray-100' : 'text-gray-400 bg-gray-50'}`}
                     >
                         {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
                     </button>
+                    
                     {gameState === 'ENDED' && !isReplaying && gameMode !== 'INFINITE' && (
                         <button 
                             onClick={handleStartClick} 
@@ -1238,6 +1306,54 @@ export default function App() {
                     )}
                 </div>
             </div>
+
+            {/* 自定义名称设置弹窗 */}
+            {showTitleModal && (
+                <div className="absolute inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm scale-100 animate-in zoom-in-95 duration-200">
+                        <h3 className="text-xl font-black text-gray-800 mb-4 flex items-center gap-2">
+                            <Edit3 className="text-indigo-600"/> 设置游戏名称
+                        </h3>
+                        <p className="text-sm text-gray-500 mb-4">
+                            为当前对局设置一个专属名称（如“宿舍杯 S1”）。<br/>
+                            设置后将显示在首页和战报中，并自动保存 7 天。
+                        </p>
+                        <input 
+                            type="text" 
+                            autoFocus
+                            placeholder="例如：谁是今晚洗碗王"
+                            value={tempTitleInput}
+                            onChange={(e) => setTempTitleInput(e.target.value)}
+                            className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:outline-none focus:border-indigo-500 focus:bg-white transition-all text-gray-800 font-bold mb-6"
+                            maxLength={15}
+                        />
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => {
+                                    setTempTitleInput('');
+                                    handleSaveTitle();
+                                }}
+                                className="px-4 py-3 bg-red-50 text-red-500 rounded-xl font-bold hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
+                                title="清除并重置"
+                            >
+                                <Trash2 size={18}/>
+                            </button>
+                            <button 
+                                onClick={() => setShowTitleModal(false)} 
+                                className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-colors"
+                            >
+                                取消
+                            </button>
+                            <button 
+                                onClick={handleSaveTitle} 
+                                className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
+                            >
+                                <Save size={18}/> 保存
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* 彩头输入弹窗 */}
             {showRewardInput && (
@@ -1498,9 +1614,21 @@ export default function App() {
             {gameState === 'IDLE' && !isReplaying && !showRewardInput && (
                 <div className="absolute inset-0 z-30 bg-white/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-fade-in">
                     <div className="mb-8">
-                        <h1 className="text-3xl sm:text-4xl font-black text-gray-800 mb-4 tracking-tight">
-                            {gameMode === 'VOICE' ? '谁先发声谁赢' : (gameMode === 'INFINITE' ? '无限世界挑战' : '双人反应对决')}
-                        </h1>
+                        {customTitle ? (
+                             <>
+                                <h1 className="text-3xl sm:text-4xl font-black text-indigo-600 mb-2 tracking-tight break-words max-w-md mx-auto">
+                                    {customTitle}
+                                </h1>
+                                <p className="text-gray-400 text-sm font-bold uppercase tracking-widest mb-4">
+                                    {gameMode === 'VOICE' ? '声控模式' : (gameMode === 'INFINITE' ? '无限模式' : '触摸模式')}
+                                </p>
+                             </>
+                        ) : (
+                            <h1 className="text-3xl sm:text-4xl font-black text-gray-800 mb-4 tracking-tight">
+                                {gameMode === 'VOICE' ? '谁先发声谁赢' : (gameMode === 'INFINITE' ? '无限世界挑战' : '双人反应对决')}
+                            </h1>
+                        )}
+                        
                         <p className="text-gray-500 max-w-xs mx-auto text-sm sm:text-base leading-relaxed">
                             {gameMode === 'VOICE' && <>看到 <strong className="text-rose-500">GO</strong> 信号时，立即喊出声音。</>}
                             {gameMode === 'TOUCH' && <>看到 <strong className="text-indigo-500">GO</strong> 信号时，立即点击屏幕。</>}
@@ -1544,7 +1672,6 @@ export default function App() {
             <div className="flex-1 flex flex-col md:flex-row relative">
                 {gameState !== 'IDLE' && (
                     <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40 pointer-events-none flex flex-col items-center justify-center">
-                        {/* 移除了旧的中央彩头锁定图标 */}
 
                         {gameState === 'WAITING' && (
                             <div className="bg-white p-2 rounded-full shadow-lg border-4 border-gray-100 relative">
@@ -1602,8 +1729,8 @@ export default function App() {
                                         <div className="flex gap-2 mt-4 w-full justify-center">
                                             <button 
                                                 onClick={generateBattleReport}
-                                                disabled={isGeneratingReport} // Add disabled
-                                                className={`flex-1 max-w-[120px] py-2 px-3 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold text-sm hover:bg-gray-50 flex items-center justify-center gap-1 shadow-sm ${isGeneratingReport ? 'opacity-50 cursor-not-allowed' : ''}`} // Add styling
+                                                disabled={isGeneratingReport} 
+                                                className={`flex-1 max-w-[120px] py-2 px-3 bg-white border border-gray-200 text-gray-600 rounded-xl font-bold text-sm hover:bg-gray-50 flex items-center justify-center gap-1 shadow-sm ${isGeneratingReport ? 'opacity-50 cursor-not-allowed' : ''}`} 
                                             >
                                                 {isGeneratingReport ? <Loader2 size={14} className="animate-spin"/> : <FileImage size={14}/>} 
                                                 战报
@@ -1661,7 +1788,6 @@ export default function App() {
                 />
                 
                 {gameState === 'ENDED' && !isReplaying && gameHistory.length > 0 && !isSavingAudio && gameMode === 'VOICE' && (
-                    // 底部控制栏已整合到上方动态区域，此处留空以免遮挡
                     <></>
                 )}
             </div>
