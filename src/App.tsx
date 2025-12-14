@@ -611,7 +611,7 @@ export default function App() {
             // 注意：这里使用 api.qrserver.com 生成二维码图片
             // 为了避免跨域 Tainted Canvas 问题，我们需要尝试设置 crossOrigin
             const qrSize = 180;
-            const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=https://ai.bornforthis.cn/ReadyGoDuel/";
+            const qrUrl = "https://ai.bornforthis.cn/images/ReadyGoDuel.png";
             
             const qrImg = new Image();
             qrImg.crossOrigin = "Anonymous"; 
