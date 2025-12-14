@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, KeyRound } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, KeyRound, Infinity, List, XCircle, LogOut } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
 type Player = 'p1' | 'p2' | null;
 type WinReason = 'REACTION' | 'FALSE_START' | 'VOICE_TRIGGER' | null;
-type GameMode = 'TOUCH' | 'VOICE';
+type GameMode = 'TOUCH' | 'VOICE' | 'INFINITE'; // 新增 INFINITE
 
 interface GameLog {
     step: 'WAITING' | 'GO' | 'END';
@@ -19,6 +19,14 @@ interface GameLog {
     recordingStartTime?: number; 
     triggerTimestamp?: number; 
     signalTimestamp?: number; 
+}
+
+// 无限模式单局记录
+interface InfiniteRoundRecord {
+    roundNumber: number;
+    winner: Player;
+    reward: string;
+    timestamp: number;
 }
 
 // --- 常量：随机彩头库 ---
@@ -339,10 +347,14 @@ export default function App() {
     // 独立密码锁状态
     const [p1Password, setP1Password] = useState('123456');
     const [p2Password, setP2Password] = useState('123456');
-    const [editingPwdPlayer, setEditingPwdPlayer] = useState<Player>(null); // 当前正在设置密码的玩家
+    const [editingPwdPlayer, setEditingPwdPlayer] = useState<Player>(null); 
 
     const [passwordCheckState, setPasswordCheckState] = useState<{ visible: boolean, player: Player, input: string }>({ visible: false, player: null, input: '' });
-    const [viewedRewardContent, setViewedRewardContent] = useState<string | null>(null); // 查看密码成功后显示的内容
+    const [viewedRewardContent, setViewedRewardContent] = useState<string | null>(null);
+
+    // 无限模式状态
+    const [infiniteStats, setInfiniteStats] = useState<InfiniteRoundRecord[]>([]);
+    const [showInfiniteSummary, setShowInfiniteSummary] = useState(false);
 
     // Debug & 状态标识
     const [isMicInitialized, setIsMicInitialized] = useState(false);
@@ -517,6 +529,8 @@ export default function App() {
         setGameHistory([]); 
         setGameMode(newMode);
         setIsRewardRevealed(false);
+        setInfiniteStats([]); // 重置无限模式数据
+        setShowInfiniteSummary(false);
         // 彩头不清除，方便继续
     };
 
@@ -530,20 +544,18 @@ export default function App() {
         const randomReward = RANDOM_REWARDS[Math.floor(Math.random() * RANDOM_REWARDS.length)];
         if (player === 'p1') {
             setP1Reward(randomReward);
-            setP1Masked(false); // 随机生成后先明文显示，让用户确认
+            setP1Masked(false); 
         } else {
             setP2Reward(randomReward);
             setP2Masked(false);
         }
     };
 
-    // 锁定（遮罩）彩头
     const lockReward = (player: 'p1' | 'p2') => {
         if (player === 'p1' && p1Reward.trim()) setP1Masked(true);
         if (player === 'p2' && p2Reward.trim()) setP2Masked(true);
     };
 
-    // 清空并重新输入（点击遮罩区域时）
     const clearAndUnlock = (player: 'p1' | 'p2') => {
         if (player === 'p1') {
             setP1Reward('');
@@ -554,17 +566,14 @@ export default function App() {
         }
     };
 
-    // 发起密码查看
     const initiatePasswordCheck = (player: 'p1' | 'p2') => {
         setPasswordCheckState({ visible: true, player, input: '' });
         setViewedRewardContent(null);
     };
 
-    // 验证密码
     const verifyPassword = () => {
         const targetPwd = passwordCheckState.player === 'p1' ? p1Password : p2Password;
         if (passwordCheckState.input === targetPwd) {
-            // 密码正确，显示内容
             const content = passwordCheckState.player === 'p1' ? p1Reward : p2Reward;
             setViewedRewardContent(content);
             setPasswordCheckState(prev => ({ ...prev, visible: false }));
@@ -579,6 +588,24 @@ export default function App() {
         } else {
             setEditingPwdPlayer(player);
         }
+    };
+
+    // 无限模式：下一轮
+    const handleNextRound = () => {
+        // 自动随机彩头
+        const r1 = RANDOM_REWARDS[Math.floor(Math.random() * RANDOM_REWARDS.length)];
+        const r2 = RANDOM_REWARDS[Math.floor(Math.random() * RANDOM_REWARDS.length)];
+        setP1Reward(r1);
+        setP2Reward(r2);
+        setP1Masked(true); // 自动遮罩
+        setP2Masked(true);
+        
+        launchGame();
+    };
+
+    // 无限模式：退出
+    const handleExitInfinite = () => {
+        setShowInfiniteSummary(true);
     };
 
     const launchGame = async () => {
@@ -691,6 +718,17 @@ export default function App() {
         setWinner(finalWinner);
         setWinReason(finalReason);
         setReactionTime(timeDiff);
+
+        // --- 无限模式数据记录 ---
+        if (gameMode === 'INFINITE') {
+            const rewardWon = finalWinner === 'p1' ? p1Reward : p2Reward;
+            setInfiniteStats(prev => [...prev, {
+                roundNumber: prev.length + 1,
+                winner: finalWinner,
+                reward: rewardWon || '无彩头',
+                timestamp: now
+            }]);
+        }
 
         const logEntry: GameLog = {
             step: 'END',
@@ -817,9 +855,11 @@ export default function App() {
             }
             
             if (gameMode === 'VOICE' && gameState !== 'IDLE') return; 
-            if (e.key.toLowerCase() === 'a') handleTouchAction('p1');
-            if (e.key.toLowerCase() === 'l') handleTouchAction('p2');
-            if (e.code === 'Space' && gameState === 'IDLE' && !isReplaying) handleStartClick();
+            if (gameMode !== 'INFINITE' && e.code === 'Space' && gameState === 'IDLE' && !isReplaying) handleStartClick(); // 无限模式下禁止空格重新开始，需走UI
+            if (gameMode === 'TOUCH' || gameMode === 'INFINITE') {
+                 if (e.key.toLowerCase() === 'a') handleTouchAction('p1');
+                 if (e.key.toLowerCase() === 'l') handleTouchAction('p2');
+            }
         };
         
         window.addEventListener('keydown', handleKeyDown as any);
@@ -852,7 +892,7 @@ export default function App() {
             <div 
                 className={`flex-1 relative flex flex-col items-center justify-center transition-all duration-300 touch-manipulation select-none overflow-hidden ${bgColor}`}
                 onPointerDown={(e) => {
-                    if (gameMode === 'TOUCH') { e.preventDefault(); handleTouchAction(id); }
+                    if (gameMode !== 'VOICE') { e.preventDefault(); handleTouchAction(id); }
                 }}
             >
                 <div className={`flex flex-col items-center justify-center w-full h-full p-4 gap-4 ${rotationClass}`}>
@@ -908,22 +948,18 @@ export default function App() {
                     <span className="font-bold text-gray-700 md:hidden">AI悦创</span>
                 </a>
                 <div className="flex items-center gap-3">
-                    <button 
-                        onClick={() => switchGameMode(gameMode === 'TOUCH' ? 'VOICE' : 'TOUCH')}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full transition-all active:scale-95"
-                        title="切换游戏模式"
-                    >
-                        {gameMode === 'TOUCH' ? <Hand size={16} className="text-indigo-500"/> : <Mic size={16} className="text-rose-500"/>}
-                        <span className="text-xs font-bold hidden sm:inline">{gameMode === 'TOUCH' ? '触摸模式' : '声控模式'}</span>
-                        <RefreshCw size={12} className="opacity-40" />
-                    </button>
+                    <div className="flex bg-gray-100 rounded-full p-1 gap-1">
+                        <button onClick={() => switchGameMode('TOUCH')} className={`p-1.5 rounded-full transition-all ${gameMode === 'TOUCH' ? 'bg-white shadow text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`} title="触摸模式"><Hand size={16}/></button>
+                        <button onClick={() => switchGameMode('VOICE')} className={`p-1.5 rounded-full transition-all ${gameMode === 'VOICE' ? 'bg-white shadow text-rose-600' : 'text-gray-400 hover:text-gray-600'}`} title="声控模式"><Mic size={16}/></button>
+                        <button onClick={() => switchGameMode('INFINITE')} className={`p-1.5 rounded-full transition-all ${gameMode === 'INFINITE' ? 'bg-white shadow text-purple-600' : 'text-gray-400 hover:text-gray-600'}`} title="无限世界"><Infinity size={16}/></button>
+                    </div>
                     <button 
                         onClick={() => setSoundEnabled(!soundEnabled)} 
                         className={`p-2 rounded-full transition-colors ${soundEnabled ? 'text-gray-600 hover:bg-gray-100' : 'text-gray-400 bg-gray-50'}`}
                     >
                         {soundEnabled ? <Volume2 size={20} /> : <VolumeX size={20} />}
                     </button>
-                    {gameState === 'ENDED' && !isReplaying && (
+                    {gameState === 'ENDED' && !isReplaying && gameMode !== 'INFINITE' && (
                         <button 
                             onClick={handleStartClick} 
                             className={`p-2 rounded-full shadow-lg text-white transition-all active:scale-90 ${isSavingAudio ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`} 
@@ -940,8 +976,8 @@ export default function App() {
                 <div className="absolute inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-md scale-100 animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[90vh]">
                         <div className="flex items-center justify-center gap-2 mb-4 text-gray-800">
-                            <Gift className="text-indigo-500" />
-                            <h2 className="text-xl font-black tracking-tight">本局彩头</h2>
+                            {gameMode === 'INFINITE' ? <Infinity className="text-purple-600"/> : <Gift className="text-indigo-500" />}
+                            <h2 className="text-xl font-black tracking-tight">{gameMode === 'INFINITE' ? '无限世界·首局设定' : '本局彩头'}</h2>
                         </div>
                         
                         <div className="space-y-6 mb-6">
@@ -1052,9 +1088,10 @@ export default function App() {
 
                         <button 
                             onClick={launchGame}
-                            className="w-full py-4 bg-gray-900 hover:bg-black text-white rounded-2xl font-bold text-lg shadow-xl shadow-gray-200 transition-all active:scale-95 flex items-center justify-center gap-2"
+                            className={`w-full py-4 text-white rounded-2xl font-bold text-lg shadow-xl shadow-gray-200 transition-all active:scale-95 flex items-center justify-center gap-2
+                                ${gameMode === 'INFINITE' ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700' : 'bg-gray-900 hover:bg-black'}`}
                         >
-                            {(!p1Reward && !p2Reward) ? '跳过并开始' : '开始对决'} <Play size={18} fill="currentColor"/>
+                            {(!p1Reward && !p2Reward && gameMode !== 'INFINITE') ? '跳过并开始' : '开始对决'} <Play size={18} fill="currentColor"/>
                         </button>
                     </div>
 
@@ -1079,18 +1116,66 @@ export default function App() {
                 </div>
             )}
 
+            {/* 无限模式结算汇总弹窗 */}
+            {showInfiniteSummary && (
+                <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-300">
+                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-md scale-100 animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-2xl font-black text-gray-800 flex items-center gap-2">
+                                <Infinity className="text-purple-600" /> 无限世界战报
+                            </h2>
+                            <button onClick={() => switchGameMode('INFINITE')} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200">
+                                <XCircle className="text-gray-500"/>
+                            </button>
+                        </div>
+
+                        <div className="flex gap-4 mb-6">
+                            <div className="flex-1 bg-rose-50 border border-rose-100 rounded-xl p-3 text-center">
+                                <div className="text-xs text-rose-400 font-bold mb-1">红方胜场</div>
+                                <div className="text-3xl font-black text-rose-600">{infiniteStats.filter(r => r.winner === 'p1').length}</div>
+                            </div>
+                            <div className="flex-1 bg-sky-50 border border-sky-100 rounded-xl p-3 text-center">
+                                <div className="text-xs text-sky-400 font-bold mb-1">蓝方胜场</div>
+                                <div className="text-3xl font-black text-sky-600">{infiniteStats.filter(r => r.winner === 'p2').length}</div>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto pr-2 space-y-2 mb-4">
+                            {infiniteStats.map((round) => (
+                                <div key={round.roundNumber} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                                    <div className="font-mono text-xs font-bold text-gray-400 w-6">#{round.roundNumber}</div>
+                                    <div className={`font-bold ${round.winner === 'p1' ? 'text-rose-500' : 'text-sky-500'}`}>
+                                        {round.winner === 'p1' ? '红方' : '蓝方'}
+                                    </div>
+                                    <div className="flex-1 text-right text-sm font-medium text-gray-600 truncate">
+                                        赢走: {round.reward}
+                                    </div>
+                                </div>
+                            ))}
+                            {infiniteStats.length === 0 && <div className="text-center text-gray-400 py-8">暂无对战记录</div>}
+                        </div>
+
+                        <button 
+                            onClick={() => switchGameMode('IDLE')}
+                            className="w-full py-3 bg-gray-900 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-black transition-colors"
+                        >
+                            <LogOut size={18}/> 结束并退出
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* IDLE 状态引导页 */}
             {gameState === 'IDLE' && !isReplaying && !showRewardInput && (
                 <div className="absolute inset-0 z-30 bg-white/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center animate-fade-in">
                     <div className="mb-8">
                         <h1 className="text-3xl sm:text-4xl font-black text-gray-800 mb-4 tracking-tight">
-                            {gameMode === 'VOICE' ? '谁先发声谁赢' : '双人反应对决'}
+                            {gameMode === 'VOICE' ? '谁先发声谁赢' : (gameMode === 'INFINITE' ? '无限世界挑战' : '双人反应对决')}
                         </h1>
                         <p className="text-gray-500 max-w-xs mx-auto text-sm sm:text-base leading-relaxed">
-                            {gameMode === 'VOICE' 
-                                ? <>看到 <strong className="text-rose-500">GO</strong> 信号时，立即喊出声音。<br/><span className="text-xs text-gray-400 mt-2 block">(请确保授予麦克风权限)</span></>
-                                : <>看到 <strong className="text-indigo-500">GO</strong> 信号时，立即点击屏幕。</>
-                            }
+                            {gameMode === 'VOICE' && <>看到 <strong className="text-rose-500">GO</strong> 信号时，立即喊出声音。</>}
+                            {gameMode === 'TOUCH' && <>看到 <strong className="text-indigo-500">GO</strong> 信号时，立即点击屏幕。</>}
+                            {gameMode === 'INFINITE' && <>连续对决模式！<br/>每一轮结束后自动生成新的随机彩头，直到一方退出。</>}
                         </p>
                     </div>
 
@@ -1120,9 +1205,9 @@ export default function App() {
                     <button 
                         onClick={handleStartClick} 
                         className={`w-full max-w-xs py-4 text-white text-xl font-black rounded-2xl shadow-xl shadow-indigo-100 transition-all active:scale-95 flex items-center justify-center gap-3
-                            ${gameMode === 'VOICE' ? 'bg-gradient-to-r from-rose-500 to-pink-600' : 'bg-gradient-to-r from-indigo-600 to-violet-600'}`}
+                            ${gameMode === 'VOICE' ? 'bg-gradient-to-r from-rose-500 to-pink-600' : (gameMode === 'INFINITE' ? 'bg-gradient-to-r from-purple-600 to-indigo-600' : 'bg-gradient-to-r from-indigo-600 to-violet-600')}`}
                     >
-                        <Play size={28} fill="currentColor" /> 立即开始
+                        <Play size={28} fill="currentColor" /> {gameMode === 'INFINITE' ? '开启挑战' : '立即开始'}
                     </button>
                 </div>
             )}
@@ -1130,6 +1215,8 @@ export default function App() {
             <div className="flex-1 flex flex-col md:flex-row relative">
                 {gameState !== 'IDLE' && (
                     <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40 pointer-events-none flex flex-col items-center justify-center">
+                        {/* 移除了旧的中央彩头锁定图标 */}
+
                         {gameState === 'WAITING' && (
                             <div className="bg-white p-2 rounded-full shadow-lg border-4 border-gray-100 relative">
                                 {gameMode === 'VOICE' && <div className="absolute inset-0 rounded-full bg-rose-400 opacity-30 transition-transform duration-75 ease-out" style={{ transform: `scale(${1 + currentVolume})` }}></div>}
@@ -1145,6 +1232,7 @@ export default function App() {
                             </div>
                         )}
                         {gameState === 'ENDED' && (
+                            // 动态 class：回放时去除白色背景和阴影
                             <div className={`flex flex-col items-center ${isReplaying ? '' : 'bg-white p-4 rounded-2xl shadow-2xl border border-gray-100'} animate-pop-in pointer-events-auto`}>
                                 {!isReplaying && (
                                     <>
@@ -1154,7 +1242,7 @@ export default function App() {
                                         {winReason === 'FALSE_START' && <div className="text-red-500 font-bold text-sm">对方抢跑犯规</div>}
 
                                         {/* 揭晓彩头区域 */}
-                                        {((winner === 'p1' && p1Reward) || (winner === 'p2' && p2Reward)) && (gameMode === 'TOUCH' || winReason !== 'FALSE_START') && (
+                                        {((winner === 'p1' && p1Reward) || (winner === 'p2' && p2Reward)) && (gameMode === 'TOUCH' || gameMode === 'INFINITE' || winReason !== 'FALSE_START') && (
                                             <div 
                                                 onClick={() => setIsRewardRevealed(true)}
                                                 className={`mt-4 w-full max-w-[200px] cursor-pointer transition-all duration-500 preserve-3d group perspective-1000 ${isRewardRevealed ? '' : 'hover:scale-105'}`}
@@ -1178,6 +1266,18 @@ export default function App() {
                                                         </div>
                                                     </div>
                                                 )}
+                                            </div>
+                                        )}
+                                        
+                                        {/* 无限模式控制按钮 */}
+                                        {gameMode === 'INFINITE' && !isReplaying && (
+                                            <div className="flex gap-2 mt-4 w-full">
+                                                <button onClick={handleExitInfinite} className="flex-1 py-2 px-3 bg-gray-100 text-gray-600 rounded-xl font-bold text-sm hover:bg-gray-200 flex items-center justify-center gap-1">
+                                                    <LogOut size={14}/> 退出
+                                                </button>
+                                                <button onClick={handleNextRound} className="flex-1 py-2 px-3 bg-purple-600 text-white rounded-xl font-bold text-sm shadow-lg hover:bg-purple-700 flex items-center justify-center gap-1">
+                                                    <RefreshCw size={14}/> 下一轮(随机)
+                                                </button>
                                             </div>
                                         )}
                                     </>
