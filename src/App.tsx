@@ -556,17 +556,7 @@ export default function App() {
             // 动态高度计算
             let height = 800; // 默认单局高度
             if (isInfiniteReport) {
-                // 无限模式：生成包含所有对局的“长图”战绩海报
-                // 布局结构：
-                // 1. Header (100)
-                // 2. Winner & Score (250)
-                // 3. List Title (50)
-                // 4. List (N * 90)  <-- Dynamic Height
-                // 5. Footer (250)
-                const listHeight = infiniteStats.length * 90;
-                height = 100 + 250 + 50 + listHeight + 250; 
-                // 确保有最小高度
-                height = Math.max(height, 1000);
+                height = 1100; // 无限模式固定高度海报
             }
             
             canvas.width = width;
@@ -614,32 +604,51 @@ export default function App() {
                 ctx.font = 'bold 64px sans-serif';
                 ctx.fillText(resultText, width / 2, 220);
 
-                // 总对局数
+                // 数据统计盒
+                const statBoxY = 300;
+                drawRoundedRect(ctx, 40, statBoxY, 520, 160, 24, '#f8fafc'); // slate-50 background
+
+                // 总对局
                 ctx.fillStyle = '#334155';
                 ctx.font = 'bold 24px sans-serif';
-                ctx.fillText(`共进行 ${total} 轮`, width / 2, 270);
+                ctx.fillText("总对局", width / 2, statBoxY + 50);
+                ctx.font = 'bold 50px sans-serif';
+                ctx.fillText(total.toString(), width / 2, statBoxY + 110);
 
-                // 比分详情
-                ctx.font = 'bold 40px sans-serif';
+                // 红方胜场
+                ctx.textAlign = 'center';
                 ctx.fillStyle = '#f43f5e';
-                ctx.fillText(`${p1Wins}`, width / 2 - 80, 330);
+                ctx.font = 'bold 24px sans-serif';
+                ctx.fillText("红方胜", 130, statBoxY + 50);
+                ctx.font = 'bold 50px sans-serif';
+                ctx.fillText(p1Wins.toString(), 130, statBoxY + 110);
+
+                // 蓝方胜场
                 ctx.fillStyle = '#0ea5e9';
-                ctx.fillText(`${p2Wins}`, width / 2 + 80, 330);
-                
-                ctx.fillStyle = '#94a3b8';
-                ctx.font = '20px sans-serif';
-                ctx.fillText(':', width / 2, 328);
-                
+                ctx.font = 'bold 24px sans-serif';
+                ctx.fillText("蓝方胜", 470, statBoxY + 50);
+                ctx.font = 'bold 50px sans-serif';
+                ctx.fillText(p2Wins.toString(), 470, statBoxY + 110);
+
                 // 列表标题
-                const listStartY = 380;
+                const listStartY = 500; // 调整位置
                 ctx.textAlign = 'left';
                 ctx.fillStyle = '#334155';
                 ctx.font = 'bold 24px sans-serif';
-                ctx.fillText('完整对局记录', 40, listStartY);
+                ctx.fillText('最近战绩 (Last 3)', 40, listStartY);
 
-                // 循环绘制所有对局
+                // 只取最后3场
+                const recentStats = [...infiniteStats].reverse().slice(0, 3);
+                
                 let itemY = listStartY + 30;
-                infiniteStats.forEach((round) => {
+                
+                if (recentStats.length === 0) {
+                     ctx.fillStyle = '#94a3b8';
+                     ctx.font = '20px sans-serif';
+                     ctx.fillText('暂无对战记录', 40, itemY + 40);
+                }
+
+                recentStats.forEach((round) => {
                     // 行背景
                     drawRoundedRect(ctx, 40, itemY, 520, 70, 12, '#f8fafc'); // slate-50
                     
