@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, KeyRound, Infinity, List, XCircle, LogOut } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, KeyRound, Infinity, XCircle, LogOut } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
@@ -1124,7 +1124,7 @@ export default function App() {
                             <h2 className="text-2xl font-black text-gray-800 flex items-center gap-2">
                                 <Infinity className="text-purple-600" /> 无限世界战报
                             </h2>
-                            <button onClick={() => switchGameMode('INFINITE')} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200">
+                            <button onClick={() => switchGameMode('TOUCH')} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200">
                                 <XCircle className="text-gray-500"/>
                             </button>
                         </div>
@@ -1156,7 +1156,7 @@ export default function App() {
                         </div>
 
                         <button 
-                            onClick={() => switchGameMode('IDLE')}
+                            onClick={() => switchGameMode('TOUCH')}
                             className="w-full py-3 bg-gray-900 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-black transition-colors"
                         >
                             <LogOut size={18}/> 结束并退出
