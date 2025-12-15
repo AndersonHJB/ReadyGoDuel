@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut, FileImage, Download, Edit3, Trash2, Save } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut, FileImage, Download, Edit3, Trash2, Save, User, Settings } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
@@ -38,7 +38,9 @@ const RANDOM_REWARDS = [
 ];
 
 const STORAGE_KEY_TITLE = 'RGD_CUSTOM_TITLE';
-const STORAGE_KEY_TS = 'RGD_TITLE_TS';
+const STORAGE_KEY_P1_NAME = 'RGD_P1_NAME';
+const STORAGE_KEY_P2_NAME = 'RGD_P2_NAME';
+const STORAGE_KEY_TS = 'RGD_TITLE_TS'; // 共用同一个时间戳刷新机制
 
 // --- 全局共享音频上下文 (iOS 修复关键) ---
 let sharedAudioCtx: AudioContext | null = null;
@@ -356,10 +358,14 @@ export default function App() {
     const [detectedFreq, setDetectedFreq] = useState<number>(0); 
     const [currentVolume, setCurrentVolume] = useState<number>(0); 
     
-    // 自定义游戏名称状态
+    // 自定义名称状态 (游戏标题 + 玩家名称)
     const [customTitle, setCustomTitle] = useState<string>('');
-    const [showTitleModal, setShowTitleModal] = useState(false);
-    const [tempTitleInput, setTempTitleInput] = useState('');
+    const [p1Name, setP1Name] = useState<string>('');
+    const [p2Name, setP2Name] = useState<string>('');
+
+    // 综合设置面板状态
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
+    const [tempSettings, setTempSettings] = useState({ title: '', p1: '', p2: '' });
 
     // 彩头相关状态
     const [p1Reward, setP1Reward] = useState('');
@@ -427,37 +433,80 @@ export default function App() {
     const replaySourceRef = useRef<AudioBufferSourceNode | null>(null);
     const replayTimeoutsRef = useRef<number[]>([]); 
 
-    // 初始化：读取本地存储的 Title
+    // 初始化：读取本地存储的 Title 和 Player Names
     useEffect(() => {
         const savedTitle = localStorage.getItem(STORAGE_KEY_TITLE);
+        const savedP1Name = localStorage.getItem(STORAGE_KEY_P1_NAME);
+        const savedP2Name = localStorage.getItem(STORAGE_KEY_P2_NAME);
         const savedTs = localStorage.getItem(STORAGE_KEY_TS);
 
-        if (savedTitle && savedTs) {
+        if (savedTs) {
             const now = Date.now();
             const daysDiff = (now - parseInt(savedTs)) / (1000 * 60 * 60 * 24);
             if (daysDiff < 7) {
-                setCustomTitle(savedTitle);
+                if (savedTitle) setCustomTitle(savedTitle);
+                if (savedP1Name) setP1Name(savedP1Name);
+                if (savedP2Name) setP2Name(savedP2Name);
             } else {
                 // 过期清除
                 localStorage.removeItem(STORAGE_KEY_TITLE);
+                localStorage.removeItem(STORAGE_KEY_P1_NAME);
+                localStorage.removeItem(STORAGE_KEY_P2_NAME);
                 localStorage.removeItem(STORAGE_KEY_TS);
             }
         }
     }, []);
 
-    // 保存 Title
-    const handleSaveTitle = () => {
-        const titleToSave = tempTitleInput.trim();
-        if (!titleToSave) {
+    // 打开设置面板
+    const openSettings = () => {
+        setTempSettings({
+            title: customTitle,
+            p1: p1Name,
+            p2: p2Name
+        });
+        setShowSettingsModal(true);
+    };
+
+    // 保存设置 (标题和玩家名称)
+    const handleSaveSettings = () => {
+        const now = Date.now().toString();
+        const { title, p1, p2 } = tempSettings;
+
+        // Title
+        if (!title.trim()) {
             setCustomTitle('');
             localStorage.removeItem(STORAGE_KEY_TITLE);
-            localStorage.removeItem(STORAGE_KEY_TS);
         } else {
-            setCustomTitle(titleToSave);
-            localStorage.setItem(STORAGE_KEY_TITLE, titleToSave);
-            localStorage.setItem(STORAGE_KEY_TS, Date.now().toString());
+            setCustomTitle(title.trim());
+            localStorage.setItem(STORAGE_KEY_TITLE, title.trim());
         }
-        setShowTitleModal(false);
+
+        // P1
+        if (!p1.trim()) {
+            setP1Name('');
+            localStorage.removeItem(STORAGE_KEY_P1_NAME);
+        } else {
+            setP1Name(p1.trim());
+            localStorage.setItem(STORAGE_KEY_P1_NAME, p1.trim());
+        }
+
+        // P2
+        if (!p2.trim()) {
+            setP2Name('');
+            localStorage.removeItem(STORAGE_KEY_P2_NAME);
+        } else {
+            setP2Name(p2.trim());
+            localStorage.setItem(STORAGE_KEY_P2_NAME, p2.trim());
+        }
+
+        // 更新时间戳
+        localStorage.setItem(STORAGE_KEY_TS, now);
+        setShowSettingsModal(false);
+    };
+
+    // 清除所有设置
+    const handleClearAllSettings = () => {
+        setTempSettings({ title: '', p1: '', p2: '' });
     };
 
     // 同步状态到 Refs
@@ -636,6 +685,10 @@ export default function App() {
             ctx.font = '20px sans-serif';
             ctx.fillText(timeString, width / 2, 120);
 
+            // 获取玩家显示名称
+            const p1DisplayName = p1Name || '红方';
+            const p2DisplayName = p2Name || '蓝方';
+
             // 4. 内容区域
             if (isInfiniteReport) {
                 const p1Wins = infiniteStats.filter(r => r.winner === 'p1').length;
@@ -646,20 +699,24 @@ export default function App() {
                 let resultText = "势均力敌";
                 let resultColor = "#64748b"; // gray
                 if (p1Wins > p2Wins) {
-                    resultText = "红方最终胜利!";
+                    resultText = `${p1DisplayName}最终胜利!`;
                     resultColor = "#f43f5e"; // rose
                 } else if (p2Wins > p1Wins) {
-                    resultText = "蓝方最终胜利!";
+                    resultText = `${p2DisplayName}最终胜利!`;
                     resultColor = "#0ea5e9"; // blue
                 }
 
                 ctx.fillStyle = resultColor;
-                ctx.font = 'bold 64px sans-serif';
-                ctx.fillText(resultText, width / 2, 210); // 上移
+                // 动态调整胜负字号
+                let resultFontSize = 64;
+                if (resultText.length > 6) resultFontSize = 48;
+                if (resultText.length > 10) resultFontSize = 36;
+                ctx.font = `bold ${resultFontSize}px sans-serif`;
+                ctx.fillText(resultText, width / 2, 210); 
 
                 // 数据统计盒
-                const statBoxY = 270; // 上移
-                drawRoundedRect(ctx, 40, statBoxY, 520, 160, 24, '#f8fafc'); // slate-50 background
+                const statBoxY = 270; 
+                drawRoundedRect(ctx, 40, statBoxY, 520, 160, 24, '#f8fafc'); 
 
                 // 总对局
                 ctx.fillStyle = '#334155';
@@ -672,19 +729,24 @@ export default function App() {
                 ctx.textAlign = 'center';
                 ctx.fillStyle = '#f43f5e';
                 ctx.font = 'bold 24px sans-serif';
-                ctx.fillText("红方胜", 130, statBoxY + 50);
+                // 截断过长名字
+                let p1Label = p1DisplayName;
+                if (p1Label.length > 4) p1Label = p1Label.substring(0, 3) + '..';
+                ctx.fillText(p1Label + '胜', 130, statBoxY + 50);
                 ctx.font = 'bold 50px sans-serif';
                 ctx.fillText(p1Wins.toString(), 130, statBoxY + 110);
 
                 // 蓝方胜场
                 ctx.fillStyle = '#0ea5e9';
                 ctx.font = 'bold 24px sans-serif';
-                ctx.fillText("蓝方胜", 470, statBoxY + 50);
+                let p2Label = p2DisplayName;
+                if (p2Label.length > 4) p2Label = p2Label.substring(0, 3) + '..';
+                ctx.fillText(p2Label + '胜', 470, statBoxY + 50);
                 ctx.font = 'bold 50px sans-serif';
                 ctx.fillText(p2Wins.toString(), 470, statBoxY + 110);
 
                 // 列表标题
-                const listStartY = 460; // 上移
+                const listStartY = 460; 
                 ctx.textAlign = 'left';
                 ctx.fillStyle = '#334155';
                 ctx.font = 'bold 24px sans-serif';
@@ -715,10 +777,10 @@ export default function App() {
                     ctx.font = 'bold 24px sans-serif';
                     if (round.winner === 'p1') {
                         ctx.fillStyle = '#f43f5e'; // rose-500
-                        ctx.fillText('红方胜', 120, itemY + 42);
+                        ctx.fillText(`${p1DisplayName}胜`, 120, itemY + 42);
                     } else {
                         ctx.fillStyle = '#0ea5e9'; // sky-500
-                        ctx.fillText('蓝方胜', 120, itemY + 42);
+                        ctx.fillText(`${p2DisplayName}胜`, 120, itemY + 42);
                     }
 
                     // 奖励
@@ -744,8 +806,14 @@ export default function App() {
                 // 胜负大字
                 ctx.textAlign = 'center';
                 ctx.fillStyle = primaryColor;
-                ctx.font = 'bold 80px sans-serif';
-                const winnerText = winner === 'p1' ? '红方胜' : (winner === 'p2' ? '蓝方胜' : '平局');
+                
+                // 动态调整字号以适应长名字
+                const winnerText = winner === 'p1' ? `${p1DisplayName}胜` : (winner === 'p2' ? `${p2DisplayName}胜` : '平局');
+                let winFontSize = 80;
+                if (winnerText.length > 4) winFontSize = 60;
+                if (winnerText.length > 8) winFontSize = 40;
+                ctx.font = `bold ${winFontSize}px sans-serif`;
+                
                 ctx.fillText(winnerText, width / 2, 220);
 
                 // 详情
@@ -777,7 +845,6 @@ export default function App() {
             }
 
             // 5. 底部 Footer (二维码)
-            // 减小二维码尺寸和留白
             const qrSize = isInfiniteReport ? 150 : 200;
             const footerY = height - (isInfiniteReport ? 220 : 280);
             
@@ -1164,10 +1231,10 @@ export default function App() {
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.repeat) return;
-            if (showRewardInput || showTitleModal) {
+            if (showRewardInput || showSettingsModal) {
                 if (e.key === 'Enter' && !e.isComposing) {
-                    if (showTitleModal) {
-                         handleSaveTitle();
+                    if (showSettingsModal) {
+                         handleSaveSettings();
                     } else if (passwordCheckState.visible) {
                         verifyPassword();
                     } else {
@@ -1187,10 +1254,10 @@ export default function App() {
         
         window.addEventListener('keydown', handleKeyDown as any);
         return () => window.removeEventListener('keydown', handleKeyDown as any);
-    }, [gameState, isReplaying, gameMode, showRewardInput, showTitleModal, launchGame, passwordCheckState, p1Password, p2Password, tempTitleInput]);
+    }, [gameState, isReplaying, gameMode, showRewardInput, showSettingsModal, launchGame, passwordCheckState, p1Password, p2Password, tempSettings]);
 
     // --- UI 组件 ---
-    const PlayerZone = ({ id, label, colorClass, keyLabel, subLabel, hasReward }: { id: 'p1' | 'p2', label: string, colorClass: string, keyLabel: string, subLabel?: string, hasReward?: boolean }) => {
+    const PlayerZone = ({ id, label, defaultLabel, colorClass, keyLabel, subLabel, hasReward, currentName }: { id: 'p1' | 'p2', label: string, defaultLabel: string, colorClass: string, keyLabel: string, subLabel?: string, hasReward?: boolean, currentName: string }) => {
         const isWinner = gameState === 'ENDED' && winner === id;
         const isLoser = gameState === 'ENDED' && winner !== id && winner !== null;
         let bgColor = colorClass;
@@ -1201,6 +1268,9 @@ export default function App() {
         if (isReplaying && gameState === 'ENDED' && !isWinner) bgColor = 'bg-gray-200 opacity-30';
         const rotationClass = id === 'p1' ? 'rotate-180 md:rotate-0' : '';
         const showShockwave = isReplaying && replayShockwave === id;
+
+        // 显示的名字
+        const displayName = currentName || defaultLabel;
 
         let IconComponent;
         if (isWinner && !isReplaying) {
@@ -1239,9 +1309,9 @@ export default function App() {
                             </div>
                         )}
                     </div>
-                    <div className={`text-center z-10 ${isWinner ? 'text-white' : 'text-gray-600/60'}`}>
-                        <div className="flex items-center justify-center gap-2">
-                            <h2 className="text-2xl sm:text-3xl font-black tracking-wider">{label}</h2>
+                    <div className={`text-center z-10 relative group ${isWinner ? 'text-white' : 'text-gray-600/60'}`}>
+                        <div className="flex items-center justify-center gap-2 relative">
+                            <h2 className="text-2xl sm:text-3xl font-black tracking-wider truncate max-w-[200px] sm:max-w-[300px]" title={displayName}>{displayName}</h2>
                             {hasReward && !isWinner && !isLoser && (
                                 <div className="bg-yellow-100 text-yellow-600 p-1 rounded-full shadow-sm animate-fade-in" title="彩头已锁定">
                                     <Lock size={12} className="sm:w-4 sm:h-4" />
@@ -1278,12 +1348,9 @@ export default function App() {
                     </div>
                     
                     <button 
-                        onClick={() => {
-                            setTempTitleInput(customTitle);
-                            setShowTitleModal(true);
-                        }} 
-                        className={`p-2 rounded-full transition-colors ${customTitle ? 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100' : 'text-gray-400 bg-gray-50 hover:bg-gray-100'}`}
-                        title="设置游戏名称"
+                        onClick={openSettings} 
+                        className={`p-2 rounded-full transition-colors ${customTitle || p1Name || p2Name ? 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100' : 'text-gray-400 bg-gray-50 hover:bg-gray-100'}`}
+                        title="游戏设置"
                     >
                         <Edit3 size={20} />
                     </button>
@@ -1307,45 +1374,79 @@ export default function App() {
                 </div>
             </div>
 
-            {/* 自定义名称设置弹窗 */}
-            {showTitleModal && (
+            {/* 综合设置面板 */}
+            {showSettingsModal && (
                 <div className="absolute inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
-                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm scale-100 animate-in zoom-in-95 duration-200">
-                        <h3 className="text-xl font-black text-gray-800 mb-4 flex items-center gap-2">
-                            <Edit3 className="text-indigo-600"/> 设置游戏名称
+                    <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm scale-100 animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh] overflow-y-auto">
+                        <h3 className="text-xl font-black text-gray-800 mb-4 flex items-center gap-2 sticky top-0 bg-white z-10">
+                            <Settings className="text-indigo-600"/> 游戏设置
                         </h3>
-                        <p className="text-sm text-gray-500 mb-4">
-                            为当前对局设置一个专属名称（如“宿舍杯 S1”）。<br/>
-                            设置后将显示在首页和战报中，并自动保存 7 天。
-                        </p>
-                        <input 
-                            type="text" 
-                            autoFocus
-                            placeholder="例如：谁是今晚洗碗王"
-                            value={tempTitleInput}
-                            onChange={(e) => setTempTitleInput(e.target.value)}
-                            className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:outline-none focus:border-indigo-500 focus:bg-white transition-all text-gray-800 font-bold mb-6"
-                            maxLength={15}
-                        />
-                        <div className="flex gap-3">
+                        
+                        <div className="space-y-4 mb-6">
+                            {/* 游戏标题设置 */}
+                            <div>
+                                <label className="block text-xs font-bold text-gray-500 mb-1 ml-1 uppercase">游戏标题 (Game Title)</label>
+                                <div className="relative">
+                                    <input 
+                                        type="text" 
+                                        placeholder="例如：谁是今晚洗碗王"
+                                        value={tempSettings.title}
+                                        onChange={(e) => setTempSettings({...tempSettings, title: e.target.value})}
+                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:outline-none focus:border-indigo-500 focus:bg-white transition-all text-gray-800 font-bold"
+                                        maxLength={15}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* P1 名称设置 */}
+                            <div>
+                                <label className="block text-xs font-bold text-rose-500 mb-1 ml-1 uppercase">红方昵称 (P1 Name)</label>
+                                <div className="relative">
+                                    <input 
+                                        type="text" 
+                                        placeholder="默认：红方"
+                                        value={tempSettings.p1}
+                                        onChange={(e) => setTempSettings({...tempSettings, p1: e.target.value})}
+                                        className="w-full px-4 py-3 bg-rose-50 border-2 border-rose-100 rounded-xl focus:outline-none focus:border-rose-500 focus:bg-white transition-all text-gray-800 font-bold"
+                                        maxLength={8}
+                                    />
+                                    <User className="absolute right-3 top-1/2 -translate-y-1/2 text-rose-300" size={18}/>
+                                </div>
+                            </div>
+
+                            {/* P2 名称设置 */}
+                            <div>
+                                <label className="block text-xs font-bold text-sky-500 mb-1 ml-1 uppercase">蓝方昵称 (P2 Name)</label>
+                                <div className="relative">
+                                    <input 
+                                        type="text" 
+                                        placeholder="默认：蓝方"
+                                        value={tempSettings.p2}
+                                        onChange={(e) => setTempSettings({...tempSettings, p2: e.target.value})}
+                                        className="w-full px-4 py-3 bg-sky-50 border-2 border-sky-100 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white transition-all text-gray-800 font-bold"
+                                        maxLength={8}
+                                    />
+                                    <User className="absolute right-3 top-1/2 -translate-y-1/2 text-sky-300" size={18}/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-3 mt-auto">
                             <button 
-                                onClick={() => {
-                                    setTempTitleInput('');
-                                    handleSaveTitle();
-                                }}
+                                onClick={handleClearAllSettings}
                                 className="px-4 py-3 bg-red-50 text-red-500 rounded-xl font-bold hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
-                                title="清除并重置"
+                                title="重置所有设置"
                             >
                                 <Trash2 size={18}/>
                             </button>
                             <button 
-                                onClick={() => setShowTitleModal(false)} 
+                                onClick={() => setShowSettingsModal(false)} 
                                 className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition-colors"
                             >
                                 取消
                             </button>
                             <button 
-                                onClick={handleSaveTitle} 
+                                onClick={handleSaveSettings} 
                                 className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2"
                             >
                                 <Save size={18}/> 保存
@@ -1367,7 +1468,9 @@ export default function App() {
                         <div className="space-y-4 sm:space-y-6 mb-4 sm:mb-6 overflow-y-auto flex-1">
                             {/* P1 输入区 */}
                             <div className="space-y-1">
-                                <label className="text-xs font-bold text-rose-500 uppercase tracking-wider ml-1">P1 红方赢了想要...</label>
+                                <label className="text-xs font-bold text-rose-500 uppercase tracking-wider ml-1">
+                                    {p1Name || 'P1 红方'} 赢了想要...
+                                </label>
                                 <div className="flex gap-2 relative">
                                     {!p1Masked ? (
                                         <>
@@ -1424,7 +1527,9 @@ export default function App() {
 
                             {/* P2 输入区 */}
                             <div className="space-y-1">
-                                <label className="text-xs font-bold text-sky-500 uppercase tracking-wider ml-1">P2 蓝方赢了想要...</label>
+                                <label className="text-xs font-bold text-sky-500 uppercase tracking-wider ml-1">
+                                    {p2Name || 'P2 蓝方'} 赢了想要...
+                                </label>
                                 <div className="flex gap-2 relative">
                                     {!p2Masked ? (
                                         <>
@@ -1533,11 +1638,11 @@ export default function App() {
 
                         <div className="flex gap-4 mb-6">
                             <div className="flex-1 bg-rose-50 border border-rose-100 rounded-xl p-3 text-center">
-                                <div className="text-xs text-rose-400 font-bold mb-1">红方胜场</div>
+                                <div className="text-xs text-rose-400 font-bold mb-1">{p1Name || '红方'}胜场</div>
                                 <div className="text-3xl font-black text-rose-600">{infiniteStats.filter(r => r.winner === 'p1').length}</div>
                             </div>
                             <div className="flex-1 bg-sky-50 border border-sky-100 rounded-xl p-3 text-center">
-                                <div className="text-xs text-sky-400 font-bold mb-1">蓝方胜场</div>
+                                <div className="text-xs text-sky-400 font-bold mb-1">{p2Name || '蓝方'}胜场</div>
                                 <div className="text-3xl font-black text-sky-600">{infiniteStats.filter(r => r.winner === 'p2').length}</div>
                             </div>
                         </div>
@@ -1547,7 +1652,7 @@ export default function App() {
                                 <div key={round.roundNumber} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
                                     <div className="font-mono text-xs font-bold text-gray-400 w-6">#{round.roundNumber}</div>
                                     <div className={`font-bold ${round.winner === 'p1' ? 'text-rose-500' : 'text-sky-500'}`}>
-                                        {round.winner === 'p1' ? '红方' : '蓝方'}
+                                        {round.winner === 'p1' ? (p1Name || '红方') : (p2Name || '蓝方')}
                                     </div>
                                     <div className="flex-1 text-right text-sm font-medium text-gray-600 truncate">
                                         赢走: {round.reward}
@@ -1692,7 +1797,9 @@ export default function App() {
                             <div className={`flex flex-col items-center ${isReplaying ? '' : 'bg-white p-4 rounded-2xl shadow-2xl border border-gray-100'} animate-pop-in pointer-events-auto`}>
                                 {!isReplaying && (
                                     <>
-                                        <div className={`text-2xl md:text-3xl font-black mb-1 ${winner === 'p1' ? 'text-rose-600' : 'text-sky-600'}`}>{winner === 'p1' ? '红方胜' : '蓝方胜'}</div>
+                                        <div className={`text-2xl md:text-3xl font-black mb-1 ${winner === 'p1' ? 'text-rose-600' : 'text-sky-600'}`}>
+                                            {winner === 'p1' ? (p1Name || '红方') + '胜' : (p2Name || '蓝方') + '胜'}
+                                        </div>
                                         {winReason === 'REACTION' && <div className="text-xl font-mono font-bold text-gray-700 bg-gray-100 px-3 py-1 rounded-lg">{reactionTime} ms</div>}
                                         {detectedFreq > 0 && gameMode === 'VOICE' && <div className="text-xs text-gray-400 mt-1">检测频率: {detectedFreq}Hz</div>}
                                         {winReason === 'FALSE_START' && <div className="text-red-500 font-bold text-sm">对方抢跑犯规</div>}
@@ -1771,7 +1878,9 @@ export default function App() {
 
                 <PlayerZone 
                     id="p1" 
-                    label="P1 红方" 
+                    label="P1 红方"
+                    defaultLabel="P1 红方"
+                    currentName={p1Name}
                     subLabel="高音区" 
                     keyLabel="键盘 'A'" 
                     colorClass="bg-rose-50" 
@@ -1781,6 +1890,8 @@ export default function App() {
                 <PlayerZone 
                     id="p2" 
                     label="P2 蓝方" 
+                    defaultLabel="P2 蓝方"
+                    currentName={p2Name}
                     subLabel="低音区" 
                     keyLabel="键盘 'L'" 
                     colorClass="bg-sky-50" 
