@@ -68,8 +68,8 @@ const RANDOM_PLAYER_NAMES = [
 const STORAGE_KEY_TITLE = 'RGD_CUSTOM_TITLE';
 const STORAGE_KEY_P1_NAME = 'RGD_P1_NAME';
 const STORAGE_KEY_P2_NAME = 'RGD_P2_NAME';
-const STORAGE_KEY_MAX_WAIT = 'RGD_MAX_WAIT'; // 新增：最大等待时间 Key
-const STORAGE_KEY_TS = 'RGD_TITLE_TS'; // 共用同一个时间戳刷新机制
+const STORAGE_KEY_MAX_WAIT = 'RGD_MAX_WAIT'; 
+const STORAGE_KEY_TS = 'RGD_TITLE_TS'; 
 
 // --- 全局共享音频上下文 (iOS 修复关键) ---
 let sharedAudioCtx: AudioContext | null = null;
@@ -387,6 +387,9 @@ export default function App() {
     const [detectedFreq, setDetectedFreq] = useState<number>(0); 
     const [currentVolume, setCurrentVolume] = useState<number>(0); 
     
+    // 访问量统计状态
+    const [visitCount, setVisitCount] = useState<number>(0);
+
     // 自定义名称状态 (游戏标题 + 玩家名称)
     const [customTitle, setCustomTitle] = useState<string>('');
     const [p1Name, setP1Name] = useState<string>('');
@@ -492,6 +495,50 @@ export default function App() {
             const mw = parseInt(savedMaxWait);
             if (!isNaN(mw) && mw >= 3) setMaxWaitTime(mw);
         }
+    }, []);
+
+    // 新增：加载访问量统计脚本
+    useEffect(() => {
+        // 定义全局 BFTCounter 接口以避免 TS 报错
+        if (!(window as any).BFTCounter) {
+            (window as any).BFTCounter = {};
+        }
+
+        const scriptSrc = "https://counter.bornforthis.cn/counter.js";
+        
+        // 避免重复加载
+        if (document.querySelector(`script[src="${scriptSrc}"]`)) {
+             // 如果脚本已存在，尝试直接获取一次数据
+             const BFTCounter = (window as any).BFTCounter;
+             if (BFTCounter && typeof BFTCounter.get === 'function') {
+                 BFTCounter.get().then((data: { total: number }) => {
+                     if (data && data.total) setVisitCount(data.total);
+                 }).catch((e:any) => console.log(e));
+             }
+            return;
+        }
+
+        const script = document.createElement('script');
+        script.src = scriptSrc;
+        script.async = true;
+        // 关键修复：显式指定域名和项目，防止 400 错误
+        script.dataset.domain = "ai.bornforthis.cn";
+        script.dataset.project = "ReadyGoDuel"; 
+        
+        // 加载完成后的回调
+        script.onload = () => {
+            const BFTCounter = (window as any).BFTCounter;
+            if (BFTCounter && typeof BFTCounter.get === 'function') {
+                // 主动获取一次数据
+                BFTCounter.get().then((data: { total: number }) => {
+                    if (data && data.total) {
+                        setVisitCount(data.total);
+                    }
+                }).catch((err: any) => console.error("Counter fetch failed:", err));
+            }
+        };
+
+        document.body.appendChild(script);
     }, []);
 
     // 打开设置面板
@@ -1996,6 +2043,23 @@ export default function App() {
                     <></>
                 )}
             </div>
+
+            {/* 新增：访问量统计挂件 (右下角悬浮) - 主动获取数据 */}
+            {visitCount > 0 && (
+                <div className="fixed bottom-3 right-3 z-50 flex items-center gap-2 px-3 py-1.5 bg-white/80 backdrop-blur-md border border-gray-100/50 rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.08)] text-xs font-mono text-gray-400 pointer-events-none animate-in fade-in slide-in-from-bottom-4 duration-1000">
+                    <div className="flex items-center gap-1.5">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                        </span>
+                        <span className="font-bold tracking-wider text-gray-500">PV</span>
+                    </div>
+                    <div className="w-px h-3 bg-gray-200"></div>
+                    <span className="font-medium min-w-[20px] text-center">
+                        {visitCount.toLocaleString()}
+                    </span>
+                </div>
+            )}
         </div>
     );
 }
