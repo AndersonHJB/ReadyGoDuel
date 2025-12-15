@@ -1441,47 +1441,49 @@ export default function App() {
                                 </div>
                             </div>
 
-                            {/* P1 名称设置 */}
-                            <div>
-                                <label className="block text-xs font-bold text-rose-500 mb-1 ml-1 uppercase">红方昵称 (P1 Name)</label>
-                                <div className="relative">
-                                    <input 
-                                        type="text" 
-                                        placeholder="默认：红方"
-                                        value={tempSettings.p1}
-                                        onChange={(e) => setTempSettings({...tempSettings, p1: e.target.value})}
-                                        className="w-full px-4 py-3 bg-rose-50 border-2 border-rose-100 rounded-xl focus:outline-none focus:border-rose-500 focus:bg-white transition-all text-gray-800 font-bold pr-12"
-                                        maxLength={8}
-                                    />
-                                    <button 
-                                        onClick={handleRandomP1Name}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-rose-300 hover:text-rose-600 hover:bg-rose-100 rounded-lg transition-colors"
-                                        title="随机昵称"
-                                    >
-                                        <Dices size={20}/>
-                                    </button>
+                            <div className="flex gap-3">
+                                {/* P1 名称设置 */}
+                                <div className="flex-1">
+                                    <label className="block text-xs font-bold text-rose-500 mb-1 ml-1 uppercase">红方昵称</label>
+                                    <div className="relative">
+                                        <input 
+                                            type="text" 
+                                            placeholder="红方"
+                                            value={tempSettings.p1}
+                                            onChange={(e) => setTempSettings({...tempSettings, p1: e.target.value})}
+                                            className="w-full px-4 py-3 bg-rose-50 border-2 border-rose-100 rounded-xl focus:outline-none focus:border-rose-500 focus:bg-white transition-all text-gray-800 font-bold pr-10"
+                                            maxLength={8}
+                                        />
+                                        <button 
+                                            onClick={handleRandomP1Name}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-rose-300 hover:text-rose-600 hover:bg-rose-100 rounded-lg transition-colors"
+                                            title="随机昵称"
+                                        >
+                                            <Dices size={18}/>
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* P2 名称设置 */}
-                            <div>
-                                <label className="block text-xs font-bold text-sky-500 mb-1 ml-1 uppercase">蓝方昵称 (P2 Name)</label>
-                                <div className="relative">
-                                    <input 
-                                        type="text" 
-                                        placeholder="默认：蓝方"
-                                        value={tempSettings.p2}
-                                        onChange={(e) => setTempSettings({...tempSettings, p2: e.target.value})}
-                                        className="w-full px-4 py-3 bg-sky-50 border-2 border-sky-100 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white transition-all text-gray-800 font-bold pr-12"
-                                        maxLength={8}
-                                    />
-                                    <button 
-                                        onClick={handleRandomP2Name}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-sky-300 hover:text-sky-600 hover:bg-sky-100 rounded-lg transition-colors"
-                                        title="随机昵称"
-                                    >
-                                        <Dices size={20}/>
-                                    </button>
+                                {/* P2 名称设置 */}
+                                <div className="flex-1">
+                                    <label className="block text-xs font-bold text-sky-500 mb-1 ml-1 uppercase">蓝方昵称</label>
+                                    <div className="relative">
+                                        <input 
+                                            type="text" 
+                                            placeholder="蓝方"
+                                            value={tempSettings.p2}
+                                            onChange={(e) => setTempSettings({...tempSettings, p2: e.target.value})}
+                                            className="w-full px-4 py-3 bg-sky-50 border-2 border-sky-100 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white transition-all text-gray-800 font-bold pr-10"
+                                            maxLength={8}
+                                        />
+                                        <button 
+                                            onClick={handleRandomP2Name}
+                                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-sky-300 hover:text-sky-600 hover:bg-sky-100 rounded-lg transition-colors"
+                                            title="随机昵称"
+                                        >
+                                            <Dices size={18}/>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
