@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut, FileImage, Download, Edit3, Trash2, Save, User, Settings } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut, FileImage, Download, Trash2, Save, User, Settings } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
@@ -1257,7 +1257,7 @@ export default function App() {
     }, [gameState, isReplaying, gameMode, showRewardInput, showSettingsModal, launchGame, passwordCheckState, p1Password, p2Password, tempSettings]);
 
     // --- UI 组件 ---
-    const PlayerZone = ({ id, label, defaultLabel, colorClass, keyLabel, subLabel, hasReward, currentName }: { id: 'p1' | 'p2', label: string, defaultLabel: string, colorClass: string, keyLabel: string, subLabel?: string, hasReward?: boolean, currentName: string }) => {
+    const PlayerZone = ({ id, defaultLabel, colorClass, keyLabel, subLabel, hasReward, currentName }: { id: 'p1' | 'p2', defaultLabel: string, colorClass: string, keyLabel: string, subLabel?: string, hasReward?: boolean, currentName: string }) => {
         const isWinner = gameState === 'ENDED' && winner === id;
         const isLoser = gameState === 'ENDED' && winner !== id && winner !== null;
         let bgColor = colorClass;
@@ -1352,7 +1352,7 @@ export default function App() {
                         className={`p-2 rounded-full transition-colors ${customTitle || p1Name || p2Name ? 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100' : 'text-gray-400 bg-gray-50 hover:bg-gray-100'}`}
                         title="游戏设置"
                     >
-                        <Edit3 size={20} />
+                        <Settings size={20} />
                     </button>
 
                     <button 
@@ -1878,7 +1878,6 @@ export default function App() {
 
                 <PlayerZone 
                     id="p1" 
-                    label="P1 红方"
                     defaultLabel="P1 红方"
                     currentName={p1Name}
                     subLabel="高音区" 
@@ -1889,7 +1888,6 @@ export default function App() {
                 <div className="absolute inset-0 pointer-events-none z-10 flex md:flex-row flex-col"><div className="md:w-1/2 w-full h-1/2 md:h-full border-b md:border-b-0 md:border-r border-gray-200/50"></div></div>
                 <PlayerZone 
                     id="p2" 
-                    label="P2 蓝方" 
                     defaultLabel="P2 蓝方"
                     currentName={p2Name}
                     subLabel="低音区" 
