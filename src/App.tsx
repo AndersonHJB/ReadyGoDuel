@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut, FileImage, Download, Trash2, Save, Settings, Clock } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut, FileImage, Download, Trash2, Save, Settings, Clock, Tag } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
 type Player = 'p1' | 'p2' | null;
 type WinReason = 'REACTION' | 'FALSE_START' | 'VOICE_TRIGGER' | null;
 type GameMode = 'TOUCH' | 'VOICE' | 'INFINITE'; 
+type RewardCategory = 'ALL' | 'FOOD' | 'CHORES' | 'PRANK' | 'LOVE' | 'MONEY';
 
 interface GameLog {
     step: 'WAITING' | 'GO' | 'END';
@@ -29,13 +30,109 @@ interface InfiniteRoundRecord {
     timestamp: number;
 }
 
-// --- 常量 ---
-const RANDOM_REWARDS = [
-    "请喝一杯大杯奶茶", "洗一周的碗", "负责取一周外卖", "请吃一顿大餐", "发 50 元红包",
-    "按摩肩膀 10 分钟", "唱一首情歌", "跑腿去买零食", "无条件答应一个要求", "包办一周家务",
-    "夸奖对方 5 分钟", "换个搞笑头像一天", "朋友圈发丑照一张", "请看一场电影", "倒洗脚水一次",
-    "学猫叫三声", "负责剥虾", "买一个对方喜欢的皮肤", "承包周末做饭", "听从指挥一小时"
+// --- 常量：分类彩头库 (模拟每类100个，精选展示) ---
+const REWARD_POOLS: Record<RewardCategory, string[]> = {
+    ALL: [], // 运行时自动合并
+    FOOD: [
+        "请喝超大杯奶茶", "请吃一顿海底捞", "负责买一周早饭", "请吃肯德基疯狂星期四", "请吃豪华冰淇淋", 
+        "负责剥一盘小龙虾", "请吃便利店随便挑", "请喝星巴克", "做一顿丰盛晚餐", "请吃路边摊烧烤",
+        "请吃米其林一星", "买一箱快乐水", "请吃麻辣烫(加两份肉)", "负责洗一周水果", "请吃哈根达斯",
+        "买对方最爱吃的零食", "请吃深夜食堂", "承包一周的夜宵", "请吃自助餐", "买一个大西瓜",
+        "请吃烤全羊", "请吃日式放题", "请吃泰式火锅", "请吃广式早茶", "请吃北京烤鸭",
+        "请吃重庆小面", "请吃螺蛳粉(加炸蛋)", "请吃过桥米线", "请吃兰州拉面(加肉)", "请吃沙县小吃(全套)",
+        "负责切好一盘水果", "做一份爱心便当", "请吃甜甜圈", "请吃提拉米苏", "请吃舒芙蕾",
+        "请喝手冲咖啡", "请喝鲜榨果汁", "请喝精酿啤酒", "请吃韩式炸鸡", "请吃章鱼小丸子",
+        "请吃关东煮", "请吃钵钵鸡", "请吃铁板烧", "请吃寿喜烧", "请吃冬阴功汤",
+        "请吃海南鸡饭", "请吃肉骨茶", "请吃菠萝包", "请吃双皮奶", "请吃杨枝甘露",
+        "请吃榴莲千层", "请吃脏脏包", "请吃马卡龙", "请吃铜锣烧", "请吃鲷鱼烧",
+        "请吃大阪烧", "请吃文字烧", "请吃天妇罗", "请吃鳗鱼饭", "请吃三文鱼刺身",
+        "请吃波士顿龙虾", "请吃帝王蟹", "请吃佛跳墙", "请吃开水白菜", "请吃文思豆腐",
+        "请吃叫花鸡", "请吃东坡肉", "请吃红烧狮子头", "请吃松鼠桂鱼", "请吃龙井虾仁",
+        "请吃大煮干丝", "请吃三套鸭", "请吃水晶肴肉", "请吃软兜长鱼", "请吃平桥豆腐",
+        "请吃蟹粉狮子头", "请吃拆烩鲢鱼头", "请吃扒烧整猪头", "请吃清炖蟹粉狮子头", "请吃清炖鸡孚",
+        "请吃金陵盐水鸭", "请吃老鸭汤", "请吃鸭血粉丝汤", "请吃牛肉锅贴", "请吃桂花糖芋苗",
+        "请吃赤豆酒酿小元宵", "请吃梅花糕", "请吃皮肚面", "请吃小笼包", "请吃生煎包"
+    ],
+    CHORES: [
+        "洗一周的碗", "负责倒一周垃圾", "手洗所有袜子", "给对方按摩肩膀20分钟", "负责取一周快递",
+        "拖全家的地", "刷全家的鞋", "负责叠一周衣服", "清理猫砂/遛狗一周", "负责剥虾",
+        "负责洗全家水果", "给手机贴膜", "负责收拾桌子", "负责洗车一次", "负责晒被子",
+        "负责擦玻璃", "负责通下水道", "负责换灯泡", "负责修理家电", "负责买菜",
+        "负责做饭", "负责洗碗", "负责擦桌子", "负责扫地", "负责拖地",
+        "负责倒垃圾", "负责洗衣服", "负责晾衣服", "负责叠衣服", "负责收纳整理",
+        "负责清洁厨房", "负责清洁卫生间", "负责清洁阳台", "负责清洁卧室", "负责清洁客厅",
+        "负责给宠物洗澡", "负责给宠物梳毛", "负责给宠物剪指甲", "负责给宠物喂食", "负责给植物浇水",
+        "负责给植物施肥", "负责给植物修剪", "负责给植物换盆", "负责清洗空调滤网", "负责清洗洗衣机槽",
+        "负责清洗油烟机", "负责清洗冰箱", "负责清洗微波炉", "负责清洗烤箱", "负责清洗饮水机",
+        "负责清洗加湿器", "负责清洗空气净化器", "负责清洗吸尘器", "负责清洗扫地机器人", "负责清洗拖地机器人",
+        "负责清洗电风扇", "负责清洗取暖器", "负责清洗除湿机", "负责清洗挂烫机", "负责清洗干衣机",
+        "负责清洗洗碗机", "负责清洗消毒柜", "负责清洗净水器", "负责清洗垃圾处理器", "负责清洗智能马桶盖",
+        "负责清洗浴缸", "负责清洗淋浴房", "负责清洗洗手台", "负责清洗马桶", "负责清洗地漏",
+        "负责清洗窗帘", "负责清洗地毯", "负责清洗沙发套", "负责清洗床单被套", "负责清洗枕套",
+        "负责清洗毛巾浴巾", "负责清洗抹布", "负责清洗拖把", "负责清洗扫把", "负责清洗垃圾桶"
+    ],
+    PRANK: [
+        "朋友圈发丑照一张(保留24h)", "学猫叫三声", "用屁股写字", "大声喊我是猪", "换个搞笑头像一天",
+        "给异性好友发'我想你了'", "模仿大猩猩锤胸口", "跳一段女团舞", "唱一首儿歌", "深情朗读土味情话",
+        "用方言说我爱你", "做10个俯卧撑", "模仿尔康表情包", "发一条肉麻朋友圈", "对着镜子猜拳直到赢",
+        "给前任发个问号", "在家族群发表情包", "把微信名改成'二狗'", "闻对方袜子", "吃一口生大蒜",
+        "喝一杯苦瓜汁", "喝一杯柠檬汁(不加糖)", "喝一杯醋", "吃一勺芥末", "生吃一个辣椒",
+        "做20个深蹲", "做30个开合跳", "平板支撑1分钟", "靠墙静蹲1分钟", "单腿站立2分钟",
+        "模仿一种动物叫声", "模仿一种乐器声音", "模仿一个明星", "模仿一个动漫角色", "模仿一个表情包",
+        "讲一个冷笑话", "讲一个鬼故事", "讲一个尴尬的故事", "讲一个秘密", "讲一个真心话",
+        "大冒险：给通讯录第10个人打电话", "大冒险：给通讯录第20个人发短信", "大冒险：给微信第5个人发表情包", "大冒险：给微信第10个人发语音", "大冒险：给最近通话的人回电话",
+        "真心话：初吻是什么时候", "真心话：暗恋过谁", "真心话：最丢脸的事", "真心话：最讨厌谁", "真心话：最想去哪里",
+        "真心话：最喜欢的颜色", "真心话：最喜欢的食物", "真心话：最喜欢的电影", "真心话：最喜欢的歌", "真心话：最喜欢的书",
+        "真心话：最想做的事", "真心话：最遗憾的事", "真心话：最感动的事", "真心话：最开心的事", "真心话：最难过的事",
+        "真心话：最害怕的事", "真心话：最讨厌的食物", "真心话：最讨厌的动物", "真心话：最讨厌的人", "真心话：最想见的人"
+    ],
+    LOVE: [
+        "无条件答应一个要求", "深情对视一分钟", "公主抱一分钟", "亲吻额头", "为对方吹头发",
+        "给对方写一封情书", "陪对方看一场电影", "陪对方逛街", "清空对方购物车(限额)", "陪对方去想去的地方",
+        "给对方洗脚", "背对方走一段路", "给对方剪指甲", "陪对方打游戏", "夸奖对方10分钟",
+        "为对方做一顿早餐", "为对方做一顿午餐", "为对方做一顿晚餐", "为对方做一次按摩", "为对方唱一首情歌",
+        "为对方画一幅画", "为对方拍一组照片", "为对方剪辑一个视频", "为对方写一首诗", "为对方编一支舞",
+        "陪对方看日出", "陪对方看日落", "陪对方看星星", "陪对方看月亮", "陪对方看流星雨",
+        "陪对方去游乐园", "陪对方去动物园", "陪对方去植物园", "陪对方去海洋馆", "陪对方去博物馆",
+        "陪对方去美术馆", "陪对方去图书馆", "陪对方去书店", "陪对方去咖啡店", "陪对方去甜品店",
+        "陪对方去公园", "陪对方去爬山", "陪对方去海边", "陪对方去森林", "陪对方去沙漠",
+        "陪对方去草原", "陪对方去雪山", "陪对方去古镇", "陪对方去乡村", "陪对方去城市",
+        "陪对方去旅行", "陪对方去露营", "陪对方去野餐", "陪对方去徒步", "陪对方去骑行",
+        "陪对方去跑步", "陪对方去游泳", "陪对方去健身", "陪对方去瑜伽", "陪对方去冥想"
+    ],
+    MONEY: [
+        "发 5.20 元红包", "发 13.14 元红包", "发 50 元红包", "发 66 元红包", "发 88 元红包",
+        "买一个对方喜欢的皮肤", "报销今晚打车费", "送一张彩票", "买一个盲盒", "承包一个月视频会员",
+        "发 100 元红包", "发 200 元红包", "发 520 元红包", "发 1314 元红包", "发 666 元红包",
+        "发 888 元红包", "买一只口红", "买一瓶香水", "买一件衣服", "买一双鞋子",
+        "买一个包包", "买一块手表", "买一条项链", "买一个手镯", "买一对耳环",
+        "买一个戒指", "买一个发夹", "买一个发圈", "买一个帽子", "买一条围巾",
+        "买一副手套", "买一双袜子", "买一件睡衣", "买一套内衣", "买一套泳衣",
+        "买一件运动服", "买一双运动鞋", "买一个瑜伽垫", "买一个哑铃", "买一个跳绳",
+        "买一个篮球", "买一个足球", "买一个排球", "买一个羽毛球拍", "买一个乒乓球拍",
+        "买一个网球拍", "买一个高尔夫球杆", "买一个滑板", "买一个轮滑鞋", "买一个自行车",
+        "买一个电动车", "买一个摩托车", "买一个汽车", "买一套房子", "买一个岛屿",
+        "清空购物车(500以内)", "清空购物车(1000以内)", "清空购物车(2000以内)", "清空购物车(5000以内)", "清空购物车(无限制)"
+    ]
+};
+
+// 预处理 ALL 集合
+REWARD_POOLS.ALL = [
+    ...REWARD_POOLS.FOOD, 
+    ...REWARD_POOLS.CHORES, 
+    ...REWARD_POOLS.PRANK, 
+    ...REWARD_POOLS.LOVE, 
+    ...REWARD_POOLS.MONEY
 ];
+
+const CATEGORY_LABELS: Record<RewardCategory, string> = {
+    ALL: "🎲 全部",
+    FOOD: "🍔 美食",
+    CHORES: "🧹 家务",
+    PRANK: "🤡 整蛊",
+    LOVE: "❤️ 互动",
+    MONEY: "💰 破财"
+};
 
 // 100个好玩、好笑、有趣的游戏名称
 const RANDOM_TITLES = [
@@ -395,6 +492,9 @@ export default function App() {
     const [p1Name, setP1Name] = useState<string>('');
     const [p2Name, setP2Name] = useState<string>('');
     const [maxWaitTime, setMaxWaitTime] = useState<number>(6); // 默认6秒
+    
+    // 彩头分类选择状态
+    const [rewardCategory, setRewardCategory] = useState<RewardCategory>('ALL');
 
     // 综合设置面板状态
     const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -1014,7 +1114,14 @@ export default function App() {
     };
 
     const handleRandomReward = (player: 'p1' | 'p2') => {
-        const randomReward = RANDOM_REWARDS[Math.floor(Math.random() * RANDOM_REWARDS.length)];
+        // 根据当前选中的分类，从对应的池子中获取
+        // 确保 REWARD_POOLS 存在，并且有数据
+        const pool = REWARD_POOLS[rewardCategory] && REWARD_POOLS[rewardCategory].length > 0
+            ? REWARD_POOLS[rewardCategory]
+            : RANDOM_REWARDS; // fallback
+        
+        const randomReward = pool[Math.floor(Math.random() * pool.length)];
+        
         if (player === 'p1') {
             setP1Reward(randomReward);
             setP1Masked(false); 
@@ -1078,8 +1185,13 @@ export default function App() {
     // 无限模式：下一轮
     const handleNextRound = () => {
         // 自动随机彩头
-        const r1 = RANDOM_REWARDS[Math.floor(Math.random() * RANDOM_REWARDS.length)];
-        const r2 = RANDOM_REWARDS[Math.floor(Math.random() * RANDOM_REWARDS.length)];
+        const pool = REWARD_POOLS[rewardCategory] && REWARD_POOLS[rewardCategory].length > 0
+            ? REWARD_POOLS[rewardCategory]
+            : RANDOM_REWARDS;
+
+        const r1 = pool[Math.floor(Math.random() * pool.length)];
+        const r2 = pool[Math.floor(Math.random() * pool.length)];
+        
         setP1Reward(r1);
         setP2Reward(r2);
         setP1Masked(true); // 自动遮罩
@@ -1609,6 +1721,23 @@ export default function App() {
                         </div>
                         
                         <div className="space-y-4 sm:space-y-6 mb-4 sm:mb-6 overflow-y-auto flex-1">
+                            
+                            {/* 分类选择器 */}
+                            <div className="flex overflow-x-auto pb-2 gap-2 no-scrollbar">
+                                {Object.keys(CATEGORY_LABELS).map((cat) => (
+                                    <button
+                                        key={cat}
+                                        onClick={() => setRewardCategory(cat as RewardCategory)}
+                                        className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-1
+                                            ${rewardCategory === cat 
+                                                ? 'bg-indigo-600 text-white shadow-md' 
+                                                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                                    >
+                                        {CATEGORY_LABELS[cat as RewardCategory]}
+                                    </button>
+                                ))}
+                            </div>
+
                             {/* P1 输入区 */}
                             <div className="space-y-1">
                                 <label className="text-xs font-bold text-rose-500 uppercase tracking-wider ml-1">
@@ -1635,7 +1764,7 @@ export default function App() {
                                                 </button>
                                             </div>
                                             <button onClick={() => lockReward('p1')} className="px-2 sm:px-3 bg-rose-100 text-rose-500 rounded-xl hover:bg-rose-200" title="锁定并隐藏"><Lock size={18} className="sm:w-5 sm:h-5"/></button>
-                                            <button onClick={() => handleRandomReward('p1')} className="px-2 sm:px-3 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200" title="随机生成"><Dices size={18} className="sm:w-5 sm:h-5"/></button>
+                                            <button onClick={() => handleRandomReward('p1')} className="px-2 sm:px-3 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200" title={`随机生成 (${CATEGORY_LABELS[rewardCategory]})`}><Dices size={18} className="sm:w-5 sm:h-5"/></button>
                                             <button onClick={() => togglePwdSetting('p1')} className={`px-2 sm:px-3 rounded-xl hover:bg-gray-200 transition-colors ${editingPwdPlayer==='p1' ? 'bg-gray-200 text-gray-800' : 'bg-gray-100 text-gray-500'}`} title="设置密码"><KeyRound size={18} className="sm:w-5 sm:h-5"/></button>
                                         </>
                                     ) : (
@@ -1694,7 +1823,7 @@ export default function App() {
                                                 </button>
                                             </div>
                                             <button onClick={() => lockReward('p2')} className="px-2 sm:px-3 bg-sky-100 text-sky-500 rounded-xl hover:bg-sky-200" title="锁定并隐藏"><Lock size={18} className="sm:w-5 sm:h-5"/></button>
-                                            <button onClick={() => handleRandomReward('p2')} className="px-2 sm:px-3 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200" title="随机生成"><Dices size={18} className="sm:w-5 sm:h-5"/></button>
+                                            <button onClick={() => handleRandomReward('p2')} className="px-2 sm:px-3 bg-gray-100 text-gray-500 rounded-xl hover:bg-gray-200" title={`随机生成 (${CATEGORY_LABELS[rewardCategory]})`}><Dices size={18} className="sm:w-5 sm:h-5"/></button>
                                             <button onClick={() => togglePwdSetting('p2')} className={`px-2 sm:px-3 rounded-xl hover:bg-gray-200 transition-colors ${editingPwdPlayer==='p2' ? 'bg-gray-200 text-gray-800' : 'bg-gray-100 text-gray-500'}`} title="设置密码"><KeyRound size={18} className="sm:w-5 sm:h-5"/></button>
                                         </>
                                     ) : (
