@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut, FileImage, Download, Trash2, Save, User, Settings } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut, FileImage, Download, Trash2, Save, Settings } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
@@ -35,6 +35,34 @@ const RANDOM_REWARDS = [
     "按摩肩膀 10 分钟", "唱一首情歌", "跑腿去买零食", "无条件答应一个要求", "包办一周家务",
     "夸奖对方 5 分钟", "换个搞笑头像一天", "朋友圈发丑照一张", "请看一场电影", "倒洗脚水一次",
     "学猫叫三声", "负责剥虾", "买一个对方喜欢的皮肤", "承包周末做饭", "听从指挥一小时"
+];
+
+// 100个好玩、好笑、有趣的游戏名称
+const RANDOM_TITLES = [
+    "洗碗争霸赛", "谁去拿外卖", "今晚谁买单", "家务分配局", "尊严保卫战", "父子局", "母女局", "谁是小狗", "奶茶归属权", "谁去倒垃圾",
+    "谁去关灯", "谁去铲屎", "谁去遛狗", "空调遥控权", "电视遥控权", "谁睡沙发", "谁是家中一霸", "谁是家庭帝位", "谁是小趴菜", "谁是欧皇",
+    "谁是非酋", "智商检测局", "手速测试", "反应力大赛", "老年人复健", "幼儿园大班", "小学鸡互啄", "菜鸡互啄", "巅峰对决", "紫禁之巅",
+    "华山论剑", "决战光明顶", "诸神黄昏", "世纪之战", "地球保卫战", "宇宙第一武道会", "天下第一武道会", "吃鸡决赛圈", "刚枪圣地", "P城乱斗",
+    "落地成盒", "谁是卷王", "谁是摸鱼王", "带薪拉扯", "职场生存战", "绩效争夺战", "谁去拿快递", "谁去取外卖", "谁去洗水果", "谁去切西瓜",
+    "第一届且唯一一届", "友谊第一比赛第二", "友谊的小船", "翻船现场", "塑料姐妹花", "塑料兄弟情", "恩断义绝", "反目成仇", "相爱相杀", "致命节奏",
+    "心跳回忆", "速度与激情", "极速传说", "秋名山车神", "逮虾户", "逮到你了", "你过来啊", "这瓜保熟吗", "年轻人不讲武德", "耗子尾汁",
+    "大意了没有闪", "我看不懂", "但我大受震撼", "泰裤辣", "依托答辩", "九转大肠", "科技与狠活", "海克斯科技", "绝绝子", "真香定律",
+    "真相只有一个", "凶手就是你", "燃烧吧小宇宙", "奥特曼打小怪兽", "巴啦啦能量", "古娜拉黑暗之神", "代表月亮消灭你", "原神启动", "启动！", "哈士奇拆家",
+    "猫猫拳PK", "咸鱼翻身", "躺平大赛", "发疯文学", "废话文学", "阴阳怪气", "顶级拉扯", "秦王绕柱", "反复横跳", "优势在我"
+];
+
+// 100个好玩、好笑、有趣的玩家名称
+const RANDOM_PLAYER_NAMES = [
+    "精神小伙", "鬼火少年", "葬爱冷少", "水晶男孩", "狂拽酷炫", "爷傲奈我何", "往事随风", "寂寞如雪", "快乐星球", "银河系富二代",
+    "幼儿园扛把子", "小学组组长", "虽然菜但爱玩", "又菜又爱叫", "峡谷养爹人", "电竞BB机", "祖安文科状元", "钢琴家", "只会喊666", "带妹界耻辱",
+    "富婆抱抱我", "阿姨我不想努力了", "保安大队长", "外卖品鉴师", "奶茶鉴赏家", "睡务局局长", "熬夜锦标赛冠军", "退堂鼓一级演员", "赖床专业户", "摸鱼课代表",
+    "干饭王", "干饭不积极", "脑子瓦特了", "智慧的眼神", "清澈的愚蠢", "二哈本哈", "拆家小能手", "撒手没", "修勾", "卡皮巴拉",
+    "情绪稳定", "吗喽", "私密马赛", "红豆泥", "美羊羊", "沸羊羊", "懒羊羊", "灰太狼", "光头强", "熊大",
+    "熊二", "吉吉国王", "猪猪侠", "超级飞侠", "魔仙女王", "游乐王子", "雨女无瓜", "要你寡", "这就去送", "我没K",
+    "布鲁biu", "恐龙抗狼", "我姓石", "想你的液", "蓝色妖姬", "黄金切尔西", "红色风暴", "英雄不朽", "我方水晶", "敌方水晶",
+    "偷塔小王子", "草丛三婊", "伏地魔", "老六", "我是老六", "不讲武德", "耗子尾汁", "马老师", "练习生", "唱跳RAP",
+    "及你太美", "小黑子", "荔枝", "油饼", "香精煎鱼", "食不食油饼", "你干嘛", "哎呦", "梅气罐", "依托答辩",
+    "九转大肠", "保留原味", "纯爱战神", "牛头人酋长", "秋名山车神", "落地成盒", "人体描边大师", "在这个年纪睡得着", "还有头发吗", "普通家庭马化腾"
 ];
 
 const STORAGE_KEY_TITLE = 'RGD_CUSTOM_TITLE';
@@ -466,6 +494,14 @@ export default function App() {
         });
         setShowSettingsModal(true);
     };
+
+    // 随机工具函数
+    const getRandomItem = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+
+    // 随机事件处理
+    const handleRandomTitle = () => setTempSettings(prev => ({...prev, title: getRandomItem(RANDOM_TITLES)}));
+    const handleRandomP1Name = () => setTempSettings(prev => ({...prev, p1: getRandomItem(RANDOM_PLAYER_NAMES)}));
+    const handleRandomP2Name = () => setTempSettings(prev => ({...prev, p2: getRandomItem(RANDOM_PLAYER_NAMES)}));
 
     // 保存设置 (标题和玩家名称)
     const handleSaveSettings = () => {
@@ -1392,9 +1428,16 @@ export default function App() {
                                         placeholder="例如：谁是今晚洗碗王"
                                         value={tempSettings.title}
                                         onChange={(e) => setTempSettings({...tempSettings, title: e.target.value})}
-                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:outline-none focus:border-indigo-500 focus:bg-white transition-all text-gray-800 font-bold"
+                                        className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl focus:outline-none focus:border-indigo-500 focus:bg-white transition-all text-gray-800 font-bold pr-12"
                                         maxLength={15}
                                     />
+                                    <button 
+                                        onClick={handleRandomTitle}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                        title="随机标题"
+                                    >
+                                        <Dices size={20}/>
+                                    </button>
                                 </div>
                             </div>
 
@@ -1407,10 +1450,16 @@ export default function App() {
                                         placeholder="默认：红方"
                                         value={tempSettings.p1}
                                         onChange={(e) => setTempSettings({...tempSettings, p1: e.target.value})}
-                                        className="w-full px-4 py-3 bg-rose-50 border-2 border-rose-100 rounded-xl focus:outline-none focus:border-rose-500 focus:bg-white transition-all text-gray-800 font-bold"
+                                        className="w-full px-4 py-3 bg-rose-50 border-2 border-rose-100 rounded-xl focus:outline-none focus:border-rose-500 focus:bg-white transition-all text-gray-800 font-bold pr-12"
                                         maxLength={8}
                                     />
-                                    <User className="absolute right-3 top-1/2 -translate-y-1/2 text-rose-300" size={18}/>
+                                    <button 
+                                        onClick={handleRandomP1Name}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-rose-300 hover:text-rose-600 hover:bg-rose-100 rounded-lg transition-colors"
+                                        title="随机昵称"
+                                    >
+                                        <Dices size={20}/>
+                                    </button>
                                 </div>
                             </div>
 
@@ -1423,10 +1472,16 @@ export default function App() {
                                         placeholder="默认：蓝方"
                                         value={tempSettings.p2}
                                         onChange={(e) => setTempSettings({...tempSettings, p2: e.target.value})}
-                                        className="w-full px-4 py-3 bg-sky-50 border-2 border-sky-100 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white transition-all text-gray-800 font-bold"
+                                        className="w-full px-4 py-3 bg-sky-50 border-2 border-sky-100 rounded-xl focus:outline-none focus:border-sky-500 focus:bg-white transition-all text-gray-800 font-bold pr-12"
                                         maxLength={8}
                                     />
-                                    <User className="absolute right-3 top-1/2 -translate-y-1/2 text-sky-300" size={18}/>
+                                    <button 
+                                        onClick={handleRandomP2Name}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-sky-300 hover:text-sky-600 hover:bg-sky-100 rounded-lg transition-colors"
+                                        title="随机昵称"
+                                    >
+                                        <Dices size={20}/>
+                                    </button>
                                 </div>
                             </div>
                         </div>
