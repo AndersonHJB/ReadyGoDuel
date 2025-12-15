@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut, FileImage, Download, Trash2, Save, Settings } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut, FileImage, Download, Trash2, Save, Settings, Clock } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
@@ -68,6 +68,7 @@ const RANDOM_PLAYER_NAMES = [
 const STORAGE_KEY_TITLE = 'RGD_CUSTOM_TITLE';
 const STORAGE_KEY_P1_NAME = 'RGD_P1_NAME';
 const STORAGE_KEY_P2_NAME = 'RGD_P2_NAME';
+const STORAGE_KEY_MAX_WAIT = 'RGD_MAX_WAIT'; // 新增：最大等待时间 Key
 const STORAGE_KEY_TS = 'RGD_TITLE_TS'; // 共用同一个时间戳刷新机制
 
 // --- 全局共享音频上下文 (iOS 修复关键) ---
@@ -390,10 +391,11 @@ export default function App() {
     const [customTitle, setCustomTitle] = useState<string>('');
     const [p1Name, setP1Name] = useState<string>('');
     const [p2Name, setP2Name] = useState<string>('');
+    const [maxWaitTime, setMaxWaitTime] = useState<number>(6); // 默认6秒
 
     // 综合设置面板状态
     const [showSettingsModal, setShowSettingsModal] = useState(false);
-    const [tempSettings, setTempSettings] = useState({ title: '', p1: '', p2: '' });
+    const [tempSettings, setTempSettings] = useState({ title: '', p1: '', p2: '', maxWait: 6 });
 
     // 彩头相关状态
     const [p1Reward, setP1Reward] = useState('');
@@ -461,11 +463,12 @@ export default function App() {
     const replaySourceRef = useRef<AudioBufferSourceNode | null>(null);
     const replayTimeoutsRef = useRef<number[]>([]); 
 
-    // 初始化：读取本地存储的 Title 和 Player Names
+    // 初始化：读取本地存储
     useEffect(() => {
         const savedTitle = localStorage.getItem(STORAGE_KEY_TITLE);
         const savedP1Name = localStorage.getItem(STORAGE_KEY_P1_NAME);
         const savedP2Name = localStorage.getItem(STORAGE_KEY_P2_NAME);
+        const savedMaxWait = localStorage.getItem(STORAGE_KEY_MAX_WAIT);
         const savedTs = localStorage.getItem(STORAGE_KEY_TS);
 
         if (savedTs) {
@@ -476,12 +479,18 @@ export default function App() {
                 if (savedP1Name) setP1Name(savedP1Name);
                 if (savedP2Name) setP2Name(savedP2Name);
             } else {
-                // 过期清除
+                // 过期清除名称，但保留配置项
                 localStorage.removeItem(STORAGE_KEY_TITLE);
                 localStorage.removeItem(STORAGE_KEY_P1_NAME);
                 localStorage.removeItem(STORAGE_KEY_P2_NAME);
                 localStorage.removeItem(STORAGE_KEY_TS);
             }
+        }
+        
+        // Max Wait time 独立保存，不过期
+        if (savedMaxWait) {
+            const mw = parseInt(savedMaxWait);
+            if (!isNaN(mw) && mw >= 3) setMaxWaitTime(mw);
         }
     }, []);
 
@@ -490,7 +499,8 @@ export default function App() {
         setTempSettings({
             title: customTitle,
             p1: p1Name,
-            p2: p2Name
+            p2: p2Name,
+            maxWait: maxWaitTime
         });
         setShowSettingsModal(true);
     };
@@ -506,7 +516,7 @@ export default function App() {
     // 保存设置 (标题和玩家名称)
     const handleSaveSettings = () => {
         const now = Date.now().toString();
-        const { title, p1, p2 } = tempSettings;
+        const { title, p1, p2, maxWait } = tempSettings;
 
         // Title
         if (!title.trim()) {
@@ -534,6 +544,10 @@ export default function App() {
             setP2Name(p2.trim());
             localStorage.setItem(STORAGE_KEY_P2_NAME, p2.trim());
         }
+        
+        // Max Wait
+        setMaxWaitTime(maxWait);
+        localStorage.setItem(STORAGE_KEY_MAX_WAIT, maxWait.toString());
 
         // 更新时间戳
         localStorage.setItem(STORAGE_KEY_TS, now);
@@ -542,7 +556,7 @@ export default function App() {
 
     // 清除所有设置
     const handleClearAllSettings = () => {
-        setTempSettings({ title: '', p1: '', p2: '' });
+        setTempSettings({ title: '', p1: '', p2: '', maxWait: 6 });
     };
 
     // 同步状态到 Refs
@@ -1071,7 +1085,12 @@ export default function App() {
         startTimeRef.current = now;
         historyRecorder.current.push({ step: 'WAITING', timestamp: 0 });
 
-        const randomDelay = Math.floor(Math.random() * 4000) + 2000; 
+        // 根据设置的最大等待时间计算随机延迟
+        // 最小 2000ms，最大 maxWaitTime * 1000 ms
+        const minDelay = 2000;
+        const maxDelay = Math.max(3000, maxWaitTime * 1000); // 确保至少有1秒的随机区间
+        const randomDelay = Math.floor(Math.random() * (maxDelay - minDelay)) + minDelay;
+        
         timerRef.current = setTimeout(triggerSignal, randomDelay);
     };
 
@@ -1484,6 +1503,26 @@ export default function App() {
                                             <Dices size={18}/>
                                         </button>
                                     </div>
+                                </div>
+                            </div>
+
+                            {/* 随机等待时间设置 */}
+                            <div className="bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                <label className="block text-xs font-bold text-gray-500 mb-2 ml-1 uppercase flex items-center gap-1">
+                                    <Clock size={14}/> 随机等待时间 (2s ~ {tempSettings.maxWait}s)
+                                </label>
+                                <input 
+                                    type="range" 
+                                    min="3" 
+                                    max="10" 
+                                    step="1"
+                                    value={tempSettings.maxWait}
+                                    onChange={(e) => setTempSettings({...tempSettings, maxWait: parseInt(e.target.value)})}
+                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                                />
+                                <div className="flex justify-between text-[10px] text-gray-400 mt-1 font-mono">
+                                    <span>快 (3s)</span>
+                                    <span>慢 (10s)</span>
                                 </div>
                             </div>
                         </div>
@@ -1943,7 +1982,7 @@ export default function App() {
                     hasReward={!!p1Reward} 
                 />
                 <div className="absolute inset-0 pointer-events-none z-10 flex md:flex-row flex-col"><div className="md:w-1/2 w-full h-1/2 md:h-full border-b md:border-b-0 md:border-r border-gray-200/50"></div></div>
-                <PlayerZone 
+                <PlayerZone
                     id="p2" 
                     defaultLabel="P2 蓝方"
                     currentName={p2Name}
