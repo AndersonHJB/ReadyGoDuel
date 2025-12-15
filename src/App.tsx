@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut, FileImage, Download, Trash2, Save, Settings, Clock, Tag, Upload } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut, FileImage, Download, Trash2, Save, Settings, Clock, Upload } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
@@ -30,7 +30,7 @@ interface InfiniteRoundRecord {
     timestamp: number;
 }
 
-// --- 常量：分类彩头库 (模拟每类100个，精选展示) ---
+// --- 常量：分类彩头库 ---
 const REWARD_POOLS: Record<Exclude<RewardCategory, 'CUSTOM'>, string[]> = {
     ALL: [], // 运行时自动合并
     FOOD: [
@@ -124,6 +124,9 @@ REWARD_POOLS.ALL = [
     ...REWARD_POOLS.LOVE, 
     ...REWARD_POOLS.MONEY
 ];
+
+// 定义默认的回退池（即之前的 RANDOM_REWARDS）
+const RANDOM_REWARDS = REWARD_POOLS.ALL;
 
 const CATEGORY_LABELS: Record<string, string> = {
     ALL: "🎲 全部",
