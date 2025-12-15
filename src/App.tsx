@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut, FileImage, Download, Trash2, Save, Settings, Clock, Tag } from 'lucide-react';
+import { Hand, RotateCcw, Play, AlertTriangle, Trophy, Volume2, VolumeX, Mic, MicOff, Activity, RefreshCw, BarChart3, Loader2, Music, Zap, Gift, Lock, Sparkles, Dices, Eye, EyeOff, KeyRound, Infinity, XCircle, LogOut, FileImage, Download, Trash2, Save, Settings, Clock, Tag, Upload } from 'lucide-react';
 
 // --- 类型定义 ---
 type GameState = 'IDLE' | 'WAITING' | 'GO' | 'ENDED';
 type Player = 'p1' | 'p2' | null;
 type WinReason = 'REACTION' | 'FALSE_START' | 'VOICE_TRIGGER' | null;
 type GameMode = 'TOUCH' | 'VOICE' | 'INFINITE'; 
-type RewardCategory = 'ALL' | 'FOOD' | 'CHORES' | 'PRANK' | 'LOVE' | 'MONEY';
+type RewardCategory = 'ALL' | 'FOOD' | 'CHORES' | 'PRANK' | 'LOVE' | 'MONEY' | 'CUSTOM';
 
 interface GameLog {
     step: 'WAITING' | 'GO' | 'END';
@@ -31,7 +31,7 @@ interface InfiniteRoundRecord {
 }
 
 // --- 常量：分类彩头库 (模拟每类100个，精选展示) ---
-const REWARD_POOLS: Record<RewardCategory, string[]> = {
+const REWARD_POOLS: Record<Exclude<RewardCategory, 'CUSTOM'>, string[]> = {
     ALL: [], // 运行时自动合并
     FOOD: [
         "请喝超大杯奶茶", "请吃一顿海底捞", "负责买一周早饭", "请吃肯德基疯狂星期四", "请吃豪华冰淇淋", 
@@ -125,13 +125,14 @@ REWARD_POOLS.ALL = [
     ...REWARD_POOLS.MONEY
 ];
 
-const CATEGORY_LABELS: Record<RewardCategory, string> = {
+const CATEGORY_LABELS: Record<string, string> = {
     ALL: "🎲 全部",
     FOOD: "🍔 美食",
     CHORES: "🧹 家务",
     PRANK: "🤡 整蛊",
     LOVE: "❤️ 互动",
-    MONEY: "💰 破财"
+    MONEY: "💰 破财",
+    CUSTOM: "✨ 自定义"
 };
 
 // 100个好玩、好笑、有趣的游戏名称
@@ -167,6 +168,8 @@ const STORAGE_KEY_P1_NAME = 'RGD_P1_NAME';
 const STORAGE_KEY_P2_NAME = 'RGD_P2_NAME';
 const STORAGE_KEY_MAX_WAIT = 'RGD_MAX_WAIT'; 
 const STORAGE_KEY_TS = 'RGD_TITLE_TS'; 
+const STORAGE_KEY_CUSTOM_REWARDS = 'RGD_CUSTOM_REWARDS'; // 新增：自定义彩头Key
+const STORAGE_KEY_CUSTOM_TS = 'RGD_CUSTOM_TS'; // 新增：自定义彩头时间戳
 
 // --- 全局共享音频上下文 (iOS 修复关键) ---
 let sharedAudioCtx: AudioContext | null = null;
@@ -495,6 +498,9 @@ export default function App() {
     
     // 彩头分类选择状态
     const [rewardCategory, setRewardCategory] = useState<RewardCategory>('ALL');
+    
+    // 用户自定义彩头状态
+    const [customRewards, setCustomRewards] = useState<string[]>([]);
 
     // 综合设置面板状态
     const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -541,6 +547,7 @@ export default function App() {
     
     // 专用 Ref: 传递 Analyser 给可视化组件
     const replayAnalyserRef = useRef<AnalyserNode | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // --- Refs ---
     const timerRef = useRef<number | null>(null);
@@ -572,21 +579,39 @@ export default function App() {
         const savedP1Name = localStorage.getItem(STORAGE_KEY_P1_NAME);
         const savedP2Name = localStorage.getItem(STORAGE_KEY_P2_NAME);
         const savedMaxWait = localStorage.getItem(STORAGE_KEY_MAX_WAIT);
+        const savedCustomRewards = localStorage.getItem(STORAGE_KEY_CUSTOM_REWARDS);
         const savedTs = localStorage.getItem(STORAGE_KEY_TS);
+        const savedCustomTs = localStorage.getItem(STORAGE_KEY_CUSTOM_TS);
+        
+        const now = Date.now();
 
+        // 基础设置过期检查
         if (savedTs) {
-            const now = Date.now();
             const daysDiff = (now - parseInt(savedTs)) / (1000 * 60 * 60 * 24);
             if (daysDiff < 7) {
                 if (savedTitle) setCustomTitle(savedTitle);
                 if (savedP1Name) setP1Name(savedP1Name);
                 if (savedP2Name) setP2Name(savedP2Name);
             } else {
-                // 过期清除名称，但保留配置项
                 localStorage.removeItem(STORAGE_KEY_TITLE);
                 localStorage.removeItem(STORAGE_KEY_P1_NAME);
                 localStorage.removeItem(STORAGE_KEY_P2_NAME);
                 localStorage.removeItem(STORAGE_KEY_TS);
+            }
+        }
+        
+        // 自定义彩头过期检查
+        if (savedCustomRewards && savedCustomTs) {
+            const daysDiff = (now - parseInt(savedCustomTs)) / (1000 * 60 * 60 * 24);
+            if (daysDiff < 7) {
+                 try {
+                     setCustomRewards(JSON.parse(savedCustomRewards));
+                 } catch (e) {
+                     console.error("Failed to parse custom rewards");
+                 }
+            } else {
+                localStorage.removeItem(STORAGE_KEY_CUSTOM_REWARDS);
+                localStorage.removeItem(STORAGE_KEY_CUSTOM_TS);
             }
         }
         
@@ -599,16 +624,13 @@ export default function App() {
 
     // 新增：加载访问量统计脚本
     useEffect(() => {
-        // 定义全局 BFTCounter 接口以避免 TS 报错
         if (!(window as any).BFTCounter) {
             (window as any).BFTCounter = {};
         }
 
         const scriptSrc = "https://counter.bornforthis.cn/counter.js";
         
-        // 避免重复加载
         if (document.querySelector(`script[src="${scriptSrc}"]`)) {
-             // 如果脚本已存在，尝试直接获取一次数据
              const BFTCounter = (window as any).BFTCounter;
              if (BFTCounter && typeof BFTCounter.get === 'function') {
                  BFTCounter.get().then((data: { total: number }) => {
@@ -621,15 +643,12 @@ export default function App() {
         const script = document.createElement('script');
         script.src = scriptSrc;
         script.async = true;
-        // 关键修复：显式指定域名和项目，防止 400 错误
         script.dataset.domain = "ai.bornforthis.cn";
         script.dataset.project = "ReadyGoDuel"; 
         
-        // 加载完成后的回调
         script.onload = () => {
             const BFTCounter = (window as any).BFTCounter;
             if (BFTCounter && typeof BFTCounter.get === 'function') {
-                // 主动获取一次数据
                 BFTCounter.get().then((data: { total: number }) => {
                     if (data && data.total) {
                         setVisitCount(data.total);
@@ -640,6 +659,35 @@ export default function App() {
 
         document.body.appendChild(script);
     }, []);
+
+    // 文件上传处理
+    const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const content = e.target?.result as string;
+            if (content) {
+                // 按行分割，去除空行和首尾空格
+                const lines = content.split('\n')
+                    .map(line => line.trim())
+                    .filter(line => line.length > 0);
+                
+                if (lines.length > 0) {
+                    setCustomRewards(lines);
+                    localStorage.setItem(STORAGE_KEY_CUSTOM_REWARDS, JSON.stringify(lines));
+                    localStorage.setItem(STORAGE_KEY_CUSTOM_TS, Date.now().toString());
+                    alert(`成功导入 ${lines.length} 个自定义彩头！`);
+                } else {
+                    alert('文件内容为空或格式不正确');
+                }
+            }
+        };
+        reader.readAsText(file);
+        // 清空 input value 以便重复上传同一文件
+        event.target.value = '';
+    };
 
     // 打开设置面板
     const openSettings = () => {
@@ -1115,10 +1163,14 @@ export default function App() {
 
     const handleRandomReward = (player: 'p1' | 'p2') => {
         // 根据当前选中的分类，从对应的池子中获取
-        // 确保 REWARD_POOLS 存在，并且有数据
-        const pool = REWARD_POOLS[rewardCategory] && REWARD_POOLS[rewardCategory].length > 0
-            ? REWARD_POOLS[rewardCategory]
-            : RANDOM_REWARDS; // fallback
+        // 如果选中 CUSTOM，则从 customRewards 中获取，如果没有自定义彩头，则回退到 RANDOM_REWARDS
+        let pool: string[] = [];
+        
+        if (rewardCategory === 'CUSTOM') {
+             pool = customRewards.length > 0 ? customRewards : RANDOM_REWARDS;
+        } else {
+             pool = REWARD_POOLS[rewardCategory as Exclude<RewardCategory, 'CUSTOM'>] || RANDOM_REWARDS;
+        }
         
         const randomReward = pool[Math.floor(Math.random() * pool.length)];
         
@@ -1185,9 +1237,12 @@ export default function App() {
     // 无限模式：下一轮
     const handleNextRound = () => {
         // 自动随机彩头
-        const pool = REWARD_POOLS[rewardCategory] && REWARD_POOLS[rewardCategory].length > 0
-            ? REWARD_POOLS[rewardCategory]
-            : RANDOM_REWARDS;
+        let pool: string[] = [];
+        if (rewardCategory === 'CUSTOM') {
+             pool = customRewards.length > 0 ? customRewards : RANDOM_REWARDS;
+        } else {
+             pool = REWARD_POOLS[rewardCategory as Exclude<RewardCategory, 'CUSTOM'>] || RANDOM_REWARDS;
+        }
 
         const r1 = pool[Math.floor(Math.random() * pool.length)];
         const r2 = pool[Math.floor(Math.random() * pool.length)];
@@ -1723,19 +1778,23 @@ export default function App() {
                         <div className="space-y-4 sm:space-y-6 mb-4 sm:mb-6 overflow-y-auto flex-1">
                             
                             {/* 分类选择器 */}
-                            <div className="flex overflow-x-auto pb-2 gap-2 no-scrollbar">
-                                {Object.keys(CATEGORY_LABELS).map((cat) => (
-                                    <button
-                                        key={cat}
-                                        onClick={() => setRewardCategory(cat as RewardCategory)}
-                                        className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-1
-                                            ${rewardCategory === cat 
-                                                ? 'bg-indigo-600 text-white shadow-md' 
-                                                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                                    >
-                                        {CATEGORY_LABELS[cat as RewardCategory]}
-                                    </button>
-                                ))}
+                            <div className="flex flex-wrap gap-2">
+                                {Object.keys(CATEGORY_LABELS).map((cat) => {
+                                    // 仅当有自定义彩头时显示 CUSTOM 标签
+                                    if (cat === 'CUSTOM' && customRewards.length === 0) return null;
+                                    return (
+                                        <button
+                                            key={cat}
+                                            onClick={() => setRewardCategory(cat as RewardCategory)}
+                                            className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors flex items-center gap-1
+                                                ${rewardCategory === cat 
+                                                    ? 'bg-indigo-600 text-white shadow-md' 
+                                                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                                        >
+                                            {CATEGORY_LABELS[cat as RewardCategory]}
+                                        </button>
+                                    );
+                                })}
                             </div>
 
                             {/* P1 输入区 */}
@@ -2173,22 +2232,41 @@ export default function App() {
                 )}
             </div>
 
-            {/* 新增：访问量统计挂件 (右下角悬浮) - 主动获取数据 */}
-            {visitCount > 0 && (
-                <div className="fixed bottom-3 right-3 z-50 flex items-center gap-2 px-3 py-1.5 bg-white/80 backdrop-blur-md border border-gray-100/50 rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.08)] text-xs font-mono text-gray-400 pointer-events-none animate-in fade-in slide-in-from-bottom-4 duration-1000">
-                    <div className="flex items-center gap-1.5">
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                        </span>
-                        <span className="font-bold tracking-wider text-gray-500">PV</span>
-                    </div>
-                    <div className="w-px h-3 bg-gray-200"></div>
-                    <span className="font-medium min-w-[20px] text-center">
-                        {visitCount.toLocaleString()}
+            {/* 新增：访问量统计挂件 + 上传功能 (右下角悬浮) */}
+            <div className="fixed bottom-3 right-3 z-50 flex items-center gap-2 px-3 py-1.5 bg-white/80 backdrop-blur-md border border-gray-100/50 rounded-full shadow-[0_4px_20px_rgba(0,0,0,0.08)] animate-in fade-in slide-in-from-bottom-4 duration-1000">
+                
+                {/* 上传自定义彩头按钮 */}
+                <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-1.5 text-xs text-indigo-500 hover:text-indigo-600 transition-colors focus:outline-none group"
+                    title="上传自定义彩头(.txt)"
+                >
+                    <Upload size={14} className="group-hover:scale-110 transition-transform"/>
+                    <span className="font-bold">DIY</span>
+                </button>
+                <input 
+                    ref={fileInputRef}
+                    type="file" 
+                    hidden 
+                    accept=".txt" 
+                    onChange={handleFileUpload}
+                />
+
+                <div className="w-px h-3 bg-gray-300 mx-1"></div>
+
+                {/* 访问量显示 */}
+                <div className="flex items-center gap-1.5 pointer-events-none">
+                    <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
                     </span>
+                    <span className="font-bold tracking-wider text-xs text-gray-500 font-mono">PV</span>
                 </div>
-            )}
+                <div className="w-px h-3 bg-gray-200"></div>
+                <span className="font-medium min-w-[20px] text-center text-xs text-gray-400 font-mono pointer-events-none">
+                    {visitCount > 0 ? visitCount.toLocaleString() : '-'}
+                </span>
+            </div>
         </div>
     );
 }
